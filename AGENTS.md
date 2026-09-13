@@ -3,7 +3,9 @@
 ## Architecture
 
 `ka.cmd` -> `ka-launch.ps1` (core, PowerShell 5.1, no dependencies) +
-`hooks/<name>/*.ps1` (optional per-profile behaviour).
+`hooks/<name>/*.ps1` (optional per-profile behaviour). The menu is plain text
+by default; on a real TTY, `tui.ps1` renders a colored no-flicker menu
+(ANSI, in-place redraw, same keys).
 
 A "profile" is either a `hooks/<name>/` folder or any ad-hoc command line,
 wrapped as `cmd.exe /c <command>` and named after its first word
@@ -52,6 +54,11 @@ serialized by a per-profile named mutex `Local\keepalive-<profile>`).
   cannot find `python` etc.
 - `kill-session` can orphan grandchild processes (e.g. a python port
   listener). Stop hooks must kill the listener explicitly.
+- Wheel scroll is terminal-dependent (verified): Windows Terminal sends real
+  wheel events (tmux copy mode at a shell, forwarded to TUIs); conhost (what a
+  double-clicked `.cmd` opens) converts the wheel to up/down arrow keys;
+  Termius sends no mouse events at all. `~/.tmux.conf` sets `mouse on` and
+  `history-limit 50000`; the universal fallback is prefix `C-b` + `[`.
 
 ## PowerShell gotchas
 
@@ -67,6 +74,15 @@ serialized by a per-profile named mutex `Local\keepalive-<profile>`).
 - The 9-arg `[DateTimeOffset]::new()` does not resolve here. Use the 8-arg
   `[DateTime]::new(..., [DateTimeKind]::Utc)` and wrap with
   `[DateTimeOffset]::new($dt)`.
+- `return @()` and `return $oneElementArray` unroll to a scalar (a 1-element
+  array becomes the element itself; callers then index characters out of
+  strings). Force array return with `return , $arr`.
+- `foreach ($x in $scalarString)` iterates characters. Keep argv arrays as
+  arrays (`@($All)`).
+- With EAP=Stop, a native command's stderr (even with `2>$null`) becomes a
+  terminating `NativeCommandError`. The test suite runs EAP=Stop, so tests
+  must not make native commands fail (e.g. `has-session` on a dead session
+  prints to stderr; check `Get-Sessions` instead).
 - `.bat`/`.cmd` files must be CRLF; LF-only ones misparse or leave cmd
   interactive.
 - From git-bash, MSYS can mangle `cmd.exe /c` args. Use PowerShell for
@@ -78,6 +94,7 @@ serialized by a per-profile named mutex `Local\keepalive-<profile>`).
 - `KA_HOOKS_DIR`: override the hooks directory (tests use `tests/hooks`).
 - `PI_SESSIONS_DIR`: override the pi sessions directory (label/conflict tests).
 - `KA_PI_DRY_RUN=1`: pi hook prints `DRYRUN: <args>` instead of launching pi.
+- `KA_FORCE_TUI=1`: force the colored menu even when output is piped (tests).
 - `QWEN_SERVER`: override the qwen server bat (tests use a dummy on port 18099).
 - Tests own the 18099 port lifecycle; a stale listener from a killed pane
   must be cleaned before the qwen tests.

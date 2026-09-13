@@ -47,6 +47,15 @@ function Kill-PortListener {
     }
 }
 
+# sweep leftovers from crashed previous runs
+foreach ($pat in @('echo-.*', 'ping-.*', 'pi-t.*', 'qtest-.*')) {
+    foreach ($nm in @((& $script:tmux list-sessions -F "#{session_name}" 2>$null))) {
+        if ($nm -match $pat) { [void](Invoke-Tmux @('kill-session', '-t', $nm)) }
+    }
+}
+Kill-PortListener 18099
+Start-Sleep -Milliseconds 300
+
 Write-Host 'keepalive tests'
 
 try {
@@ -162,9 +171,21 @@ try {
     Assert 'qwen stop frees port' $freed
     Remove-Item Env:QWEN_SERVER -ErrorAction SilentlyContinue
 
-    # --- stop ---
+    # --- TUI menu ---
+    $env:KA_FORCE_TUI = '1'
+    $tuiOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'ka-launch.ps1') 'echo' 2>$null) -join "`n"
+    Assert 'tui renders colored menu' (($tuiOut -match 'keepalive') -and ($tuiOut -match 'echo-') -and $tuiOut.Contains([char]27))
+    $null = "s1`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'ka-launch.ps1') 'echo' 2>$null
+    $stillThere = $false
+    foreach ($nm in @(Get-Sessions -Profile 'echo')) { if ($nm.Name -eq $s1) { $stillThere = $true } }
+    Assert 'tui stop stops the first session' (-not $stillThere)
+    $env:KA_FORCE_TUI = ''
+    $plainOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'ka-launch.ps1') 'echo' 2>$null) -join "`n"
+    Assert 'plain menu when piped' (($plainOut -match 'keepalive') -and (-not $plainOut.Contains([char]27)))
+
+    # --- stop --- ($s1 was already stopped by the TUI test)
     $before = (Get-Sessions -Profile 'echo').Count
-    Stop-Session -Profile 'echo' -Name $s1
+    Stop-Session -Profile 'echo' -Name $s2
     Start-Sleep -Milliseconds 500
     $after = (Get-Sessions -Profile 'echo').Count
     Assert 'stop session kills it' ($after -eq ($before - 1))

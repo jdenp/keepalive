@@ -23,6 +23,9 @@ ka <x> -k                         stop all sessions of x
 
 In the menu: `1-N` attach, `s1` (or `s 1`) stop session 1, Enter start new, `q` quit.
 
+On an interactive terminal the menu is a small colored TUI; when output is
+piped it falls back to plain text (same keys).
+
 ## Examples
 
 ```
@@ -51,8 +54,15 @@ See `AGENTS.md` for the full contract and the tmux/PowerShell gotchas.
 
 ## Scrolling history
 
-`mouse on` is set in `~/.tmux.conf`, so wheel scroll enters tmux copy mode on
-terminals that send real wheel events. Termius (and some terminals) convert
-scroll gestures to arrow keys; those do not scroll the buffer. Fallback that
-always works: prefix (`C-b`) then `[` for copy mode, arrows/space scroll,
-`q` exits.
+`mouse on` is set in `~/.tmux.conf`. What you get depends on the terminal:
+
+- Windows Terminal (sends real wheel events): at a bare shell, wheel-up enters
+  tmux copy mode (scrollback); over a TUI such as pi, the wheel is forwarded
+  to the app.
+- conhost (what a double-clicked `.cmd` opens) converts the wheel to up/down
+  arrow keys, so it scrolls command history instead. Run `ka` inside Windows
+  Terminal to get real wheel behavior.
+- Termius sends no mouse events at all; use the key fallback below.
+
+Fallback that always works (including Termius): prefix `C-b` then `[` enters
+copy mode; arrows/space/pageup scroll, `q` exits.

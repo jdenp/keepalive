@@ -19,6 +19,8 @@ $script:HooksDir = $env:KA_HOOKS_DIR
 if (-not $script:HooksDir) { $script:HooksDir = Join-Path $PSScriptRoot 'hooks' }
 $script:PsExe = (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source
 if (-not $script:PsExe) { $script:PsExe = 'powershell.exe' }
+$tuiFile = Join-Path $PSScriptRoot 'tui.ps1'
+if (Test-Path -LiteralPath $tuiFile) { . $tuiFile }
 
 function Find-Tmux {
     $c = Get-Command tmux.exe -ErrorAction SilentlyContinue
@@ -92,14 +94,15 @@ function Get-Labels {
     # optional label hook: args are name/epoch pairs, output one line per input, in order
     param([string]$Profile, $Sessions)
     $hook = Join-Path $script:HooksDir (Join-Path $Profile 'label.ps1')
-    if (-not (Test-Path -LiteralPath $hook) -or -not $Sessions) { return @() }
+    if (-not (Test-Path -LiteralPath $hook) -or -not $Sessions) { return , @() }
     $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $hook)
     foreach ($s in $Sessions) { $a += $s.Name; $a += [string]$s.Created }
     $out = & $script:PsExe @a 2>$null
-    if (-not $out) { return @() }
+    if (-not $out) { return , @() }
     $out = @($out)
     while ($out.Count -lt $Sessions.Count) { $out += '' }
-    return $out
+    # , $out: keep 1-element arrays from unrolling to a bare string
+    return , $out
 }
 
 function Enter-ProfileLock {
@@ -155,6 +158,12 @@ function Invoke-Attach {
 function Show-Menu {
     # always shown (even with zero sessions). Enter = new, 1-N = attach, sN = stop, q = quit
     param([string]$Profile, [string[]]$NewArgs)
+    # colored TUI on real terminals, plain menu when output is piped
+    $onTty = -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected
+    if (($onTty -or $env:KA_FORCE_TUI -eq '1') -and (Get-Command Show-TuiMenu -ErrorAction SilentlyContinue)) {
+        Show-TuiMenu -Profile $Profile -NewArgs $NewArgs
+        return
+    }
     while ($true) {
         $sessions = Get-Sessions -Profile $Profile
         $labels = Get-Labels -Profile $Profile -Sessions $sessions
