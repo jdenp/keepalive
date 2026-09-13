@@ -53,18 +53,3 @@ Drop a folder into `hooks/<name>/` to add behaviour for profile `<name>`:
 | `stop.ps1`  | optional. Gracefully stop the underlying process before the session is killed |
 
 See `AGENTS.md` for the full contract and the tmux/PowerShell gotchas.
-
-## Scrolling history
-
-`mouse on` is set in `~/.tmux.conf`. What you get depends on the terminal:
-
-- Windows Terminal (sends real wheel events): at a bare shell, wheel-up enters
-  tmux copy mode (scrollback); over a TUI such as pi, the wheel is forwarded
-  to the app.
-- conhost (what a double-clicked `.cmd` opens) converts the wheel to up/down
-  arrow keys, so it scrolls command history instead. Run `keepalive` inside
-  Windows Terminal to get real wheel behavior.
-- Termius sends no mouse events at all; use the key fallback below.
-
-Fallback that always works (including Termius): prefix `C-b` then `[` enters
-copy mode; arrows/space/pageup scroll, `q` exits.
