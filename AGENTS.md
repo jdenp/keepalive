@@ -11,6 +11,11 @@
   reattach), but never rely on that and never do it casually.
 - Safe to kill: tmux sessions you created (exact name, verified against list-sessions first)
   and processes you spawned moments ago with a known full ancestry.
+- NO scratch pi sessions: a second pi on the shared local model + shared session dir is how
+  the tmux server died on 2026-09-13. No pipe-pane byte-capture experiments on live servers
+  either. If pi's behavior needs probing, ask the user to run the test in their own terminal.
+- Treat the tmux server as the user's: operations that could restart or crash it (kill-server,
+  server-wide config reloads, exotic pipe-pane/send-keys) require asking first.
 
 ## Architecture
 
