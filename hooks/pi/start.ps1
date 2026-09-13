@@ -125,7 +125,7 @@ if ($continue) {
     if ($id) { $final += @('--session', $id) } else { $final += '-c' }
 }
 
-if ($env:KA_PI_DRY_RUN) {
+if ($env:KEEPALIVE_PI_DRY_RUN) {
     Write-Output ("DRYRUN: " + ($final -join ' '))
     exit 0
 }

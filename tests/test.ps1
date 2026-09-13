@@ -1,10 +1,10 @@
 # keepalive test suite: powershell -NoProfile -ExecutionPolicy Bypass -File tests/test.ps1
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$env:KA_HOOKS_DIR = Join-Path $PSScriptRoot 'hooks'
-$env:KA_NO_MAIN = '1'
-. (Join-Path $root 'ka-launch.ps1')
-Remove-Item Env:KA_NO_MAIN -ErrorAction SilentlyContinue
+$env:KEEPALIVE_HOOKS_DIR = Join-Path $PSScriptRoot 'hooks'
+$env:KEEPALIVE_NO_MAIN = '1'
+. (Join-Path $root 'keepalive-launch.ps1')
+Remove-Item Env:KEEPALIVE_NO_MAIN -ErrorAction SilentlyContinue
 
 $script:tmux = Find-Tmux
 $script:created = @()
@@ -130,9 +130,9 @@ try {
     $null = New-TestSession 'pi-t2' 'ping.exe -n 600 127.0.0.1'
     Start-Sleep -Seconds 1
     $env:PI_SESSIONS_DIR = $fix
-    $env:KA_PI_DRY_RUN = '1'
+    $env:KEEPALIVE_PI_DRY_RUN = '1'
     $dry = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hooks\pi\start.ps1') '-c' 2>$null
-    Remove-Item Env:KA_PI_DRY_RUN -ErrorAction SilentlyContinue
+    Remove-Item Env:KEEPALIVE_PI_DRY_RUN -ErrorAction SilentlyContinue
     Remove-Item Env:PI_SESSIONS_DIR -ErrorAction SilentlyContinue
     Assert 'pi -c skips held session' (@($dry) -join ' ' -match ("--session " + $midUuid))
 
@@ -172,15 +172,15 @@ try {
     Remove-Item Env:QWEN_SERVER -ErrorAction SilentlyContinue
 
     # --- TUI menu ---
-    $env:KA_FORCE_TUI = '1'
-    $tuiOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'ka-launch.ps1') 'echo' 2>$null) -join "`n"
+    $env:KEEPALIVE_FORCE_TUI = '1'
+    $tuiOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 'echo' 2>$null) -join "`n"
     Assert 'tui renders colored menu' (($tuiOut -match 'keepalive') -and ($tuiOut -match 'echo-') -and $tuiOut.Contains([char]27))
-    $null = "s1`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'ka-launch.ps1') 'echo' 2>$null
+    $null = "s1`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 'echo' 2>$null
     $stillThere = $false
     foreach ($nm in @(Get-Sessions -Profile 'echo')) { if ($nm.Name -eq $s1) { $stillThere = $true } }
     Assert 'tui stop stops the first session' (-not $stillThere)
-    $env:KA_FORCE_TUI = ''
-    $plainOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'ka-launch.ps1') 'echo' 2>$null) -join "`n"
+    $env:KEEPALIVE_FORCE_TUI = ''
+    $plainOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 'echo' 2>$null) -join "`n"
     Assert 'plain menu when piped' (($plainOut -match 'keepalive') -and (-not $plainOut.Contains([char]27)))
 
     # --- stop --- ($s1 was already stopped by the TUI test)

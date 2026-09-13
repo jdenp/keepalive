@@ -9,16 +9,18 @@ anywhere (laptop, phone, desktop) and the process keeps going while you are away
 winget install arndawg.tmux-windows
 ```
 
-Copy `ka.cmd` and `keepalive.cmd` from this repo to a folder on your PATH
-(e.g. `C:\Users\<you>\.local\bin`).
+Copy `keepalive.cmd` from this repo to a folder on your PATH
+(e.g. `C:\Users\<you>\.local\bin`). For git-bash, add an extensionless
+`keepalive` file next to it that execs `keepalive-launch.ps1` via
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File`.
 
 ## Use
 
 ```
-ka <name-or-command> [args...]    menu: attach to a running one, or start a new one
-ka <x> -l                         list sessions of x
-ka <x> -n [args]                  start a new one (skip menu)
-ka <x> -k                         stop all sessions of x
+keepalive <name-or-command> [args...]   menu: attach, or start a new one
+keepalive <x> -l                   list sessions of x
+keepalive <x> -n [args]            start a new one (skip menu)
+keepalive <x> -k                   stop all sessions of x
 ```
 
 In the menu: `1-N` attach, `s1` (or `s 1`) stop session 1, Enter start new, `q` quit.
@@ -29,12 +31,12 @@ piped it falls back to plain text (same keys).
 ## Examples
 
 ```
-ka pi                 # pi coding agent; menu shows your prompt per session
-ka qwen               # wrap the local llama server in tmux (optional; the
+keepalive pi          # pi coding agent; menu shows your prompt per session
+keepalive qwen        # wrap the local llama server in tmux (optional; the
                       # plain `qwen` cmd uses the original launch script)
-ka "npm run dev"
-ka C:\tools\server.bat
-ka python train.py --epochs 10
+keepalive "npm run dev"
+keepalive C:\tools\server.bat
+keepalive python train.py --epochs 10
 ```
 
 Any command works out of the box. It runs as `cmd.exe /c <your command>` inside
@@ -60,8 +62,8 @@ See `AGENTS.md` for the full contract and the tmux/PowerShell gotchas.
   tmux copy mode (scrollback); over a TUI such as pi, the wheel is forwarded
   to the app.
 - conhost (what a double-clicked `.cmd` opens) converts the wheel to up/down
-  arrow keys, so it scrolls command history instead. Run `ka` inside Windows
-  Terminal to get real wheel behavior.
+  arrow keys, so it scrolls command history instead. Run `keepalive` inside
+  Windows Terminal to get real wheel behavior.
 - Termius sends no mouse events at all; use the key fallback below.
 
 Fallback that always works (including Termius): prefix `C-b` then `[` enters

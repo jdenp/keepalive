@@ -2,7 +2,7 @@
 
 ## Architecture
 
-`ka.cmd` -> `ka-launch.ps1` (core, PowerShell 5.1, no dependencies) +
+`keepalive.cmd` -> `keepalive-launch.ps1` (core, PowerShell 5.1, no dependencies) +
 `hooks/<name>/*.ps1` (optional per-profile behaviour). The menu is plain text
 by default; on a real TTY, `tui.ps1` renders a colored no-flicker menu
 (ANSI, in-place redraw, same keys).
@@ -18,7 +18,7 @@ serialized by a per-profile named mutex `Local\keepalive-<profile>`).
 
 ## Wrapping an existing script (the common task)
 
-1. `ka <path-to-script> [args]` already works with zero setup.
+1. `keepalive <path-to-script> [args]` already works with zero setup.
 2. For menu labels or graceful stop, add `hooks/<name>/`:
    - `start.ps1` (required): must end with the foreground process; the pane
      dies when it exits. Set the cwd here with `Set-Location` (the tmux port's
@@ -90,11 +90,11 @@ serialized by a per-profile named mutex `Local\keepalive-<profile>`).
 
 ## Test seams (env vars)
 
-- `KA_NO_MAIN=1`: dot-source `ka-launch.ps1` for its functions without running main.
-- `KA_HOOKS_DIR`: override the hooks directory (tests use `tests/hooks`).
+- `KEEPALIVE_NO_MAIN=1`: dot-source `keepalive-launch.ps1` for its functions without running main.
+- `KEEPALIVE_HOOKS_DIR`: override the hooks directory (tests use `tests/hooks`).
 - `PI_SESSIONS_DIR`: override the pi sessions directory (label/conflict tests).
-- `KA_PI_DRY_RUN=1`: pi hook prints `DRYRUN: <args>` instead of launching pi.
-- `KA_FORCE_TUI=1`: force the colored menu even when output is piped (tests).
+- `KEEPALIVE_PI_DRY_RUN=1`: pi hook prints `DRYRUN: <args>` instead of launching pi.
+- `KEEPALIVE_FORCE_TUI=1`: force the colored menu even when output is piped (tests).
 - `QWEN_SERVER`: override the qwen server bat (tests use a dummy on port 18099).
 - Tests own the 18099 port lifecycle; a stale listener from a killed pane
   must be cleaned before the qwen tests.

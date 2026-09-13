@@ -1,21 +1,21 @@
 # keepalive core: run/attach any command in a tmux session that survives SSH disconnects.
 #
 # Usage:
-#   ka <profile-or-command> [args...]   menu: attach to a running one, or start a new one
-#   ka <x> -l    list sessions of x
-#   ka <x> -n    start a new session (skip menu), optional args after
-#   ka <x> -k    stop all sessions of x
-#   ka           pick a profile (only if more than one hook profile exists)
+#   keepalive <profile-or-command> [args...]   menu: attach, or start a new one
+#   keepalive <x> -l    list sessions of x
+#   keepalive <x> -n    start a new session (skip menu), optional args after
+#   keepalive <x> -k    stop all sessions of x
+#   keepalive          pick a profile (only if more than one hook profile exists)
 #
 # A "profile" is either a hooks/<name>/ folder (start.ps1 required, label.ps1 and
 # stop.ps1 optional) or any ad-hoc command line wrapped in cmd.exe /c.
 #
-# Test seam: set KA_NO_MAIN=1 to dot-source this file for its functions only.
+# Test seam: set KEEPALIVE_NO_MAIN=1 to dot-source for its functions only.
 
 param([Parameter(ValueFromRemainingArguments = $true)] $All)
 
 # keep EAP at Continue: native stderr under EAP=Stop becomes a terminating error
-$script:HooksDir = $env:KA_HOOKS_DIR
+$script:HooksDir = $env:KEEPALIVE_HOOKS_DIR
 if (-not $script:HooksDir) { $script:HooksDir = Join-Path $PSScriptRoot 'hooks' }
 $script:PsExe = (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source
 if (-not $script:PsExe) { $script:PsExe = 'powershell.exe' }
@@ -46,7 +46,7 @@ function Get-ProfileName {
     if ($tok -match '[\\/]|^:') { $tok = [System.IO.Path]::GetFileNameWithoutExtension($tok) }
     elseif ($tok -match '\.(exe|bat|cmd|ps1|py|js)$') { $tok = [System.IO.Path]::GetFileNameWithoutExtension($tok) }
     $t = $tok -replace '[^a-zA-Z0-9]+', '-' -replace '^-+|-+$', ''
-    if (-not $t) { $t = 'ka' }
+    if (-not $t) { $t = 'keepalive' }
     return $t.ToLower().Substring(0, [Math]::Min(16, $t.Length))
 }
 
@@ -160,7 +160,7 @@ function Show-Menu {
     param([string]$Profile, [string[]]$NewArgs)
     # colored TUI on real terminals, plain menu when output is piped
     $onTty = -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected
-    if (($onTty -or $env:KA_FORCE_TUI -eq '1') -and (Get-Command Show-TuiMenu -ErrorAction SilentlyContinue)) {
+    if (($onTty -or $env:KEEPALIVE_FORCE_TUI -eq '1') -and (Get-Command Show-TuiMenu -ErrorAction SilentlyContinue)) {
         Show-TuiMenu -Profile $Profile -NewArgs $NewArgs
         return
     }
@@ -210,7 +210,7 @@ function Start-NoTmux {
 }
 
 # ---------------------------------------------------------------- main (test seam)
-if ($env:KA_NO_MAIN) { return }
+if ($env:KEEPALIVE_NO_MAIN) { return }
 
 $script:tmux = Find-Tmux
 
@@ -233,7 +233,7 @@ foreach ($a in $All) {
 
 if (-not $name) {
     $profiles = Get-HookProfiles
-    if (-not $profiles) { Write-Host 'no hook profiles found and no command given. usage: ka <profile-or-command> [args...]'; exit 1 }
+    if (-not $profiles) { Write-Host 'no hook profiles found and no command given. usage: keepalive <profile-or-command> [args...]'; exit 1 }
     if ($profiles.Count -eq 1) { $name = $profiles[0] }
     else {
         Write-Host 'keepalive profiles:'

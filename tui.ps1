@@ -1,4 +1,4 @@
-# tui.ps1: colored menu for keepalive. Loaded by ka-launch.ps1 on real TTYs.
+# tui.ps1: colored menu for keepalive. Loaded by keepalive-launch.ps1 on TTYs.
 # Keys: 1-N attach, sN stop, Enter new, q quit. Redraws in place (no clear).
 
 function Enable-VtOutput {
