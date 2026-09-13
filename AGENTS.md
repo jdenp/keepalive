@@ -50,6 +50,17 @@ serialized by a per-profile named mutex `Local\keepalive-<profile>`).
 4. Test hooks with `powershell -NoProfile -ExecutionPolicy Bypass -File tests/test.ps1`
    and add cases there.
 
+## Mouse / wheel (proven 2026-09-13, logger test)
+- The tmux win32 client DROPS wheel events: a mouse-mode logger pane in tmux received
+  zero bytes while wheeling. Apps that capture the mouse (pi fullscreen) never see the
+  wheel; `mouse on/off` makes no difference. The janky wheel scroll in tmux is tmux's
+  own copy mode, not the app.
+- pi fullscreen native wheel scroll only works BARE (no tmux). Machine-level
+  `~/.local/bin/pi.cmd` routes: Windows Terminal / double-click -> bare npm pi;
+  TERM set (bash, ssh) or TERM=screen (tmux pane) -> keepalive. `keepalive pi` stays
+  as the explicit tmux route (phone reattach, disconnect survival).
+- In tmux, scroll pi fullscreen with PageUp/PageDown; C-b [ for deep history.
+
 ## tmux-windows quirks (learned the hard way, do not retry)
 
 - Pane command argv[0] must be a bare name with `.exe` (`powershell.exe`,
