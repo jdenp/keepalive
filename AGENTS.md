@@ -1,5 +1,17 @@
 # keepalive - notes for agents
 
+## Safety (learned the hard way)
+
+- NEVER kill GUI or shared processes (WindowsTerminal, explorer, conhost, stray cmd.exe).
+  `wt <cmd>` opens a tab in the user's EXISTING window, so a "test" tab and the user's tabs
+  live in the same process. Killing it kills their windows.
+- Before killing anything that is not a keepalive tmux session you created: inspect the full
+  process tree + command lines, confirm ownership, and when in doubt ASK the user.
+- Killing a tab's shell kills the user's attached client. The tmux session survives (they can
+  reattach), but never rely on that and never do it casually.
+- Safe to kill: tmux sessions you created (exact name, verified against list-sessions first)
+  and processes you spawned moments ago with a known full ancestry.
+
 ## Architecture
 
 `keepalive.cmd` -> `keepalive-launch.ps1` (core, PowerShell 5.1, no dependencies) +
