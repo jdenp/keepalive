@@ -47,10 +47,14 @@ function Kill-PortListener {
     }
 }
 
-# sweep leftovers from crashed previous runs
-foreach ($pat in @('echo-.*', 'ping-.*', 'pi-t.*', 'qtest-.*')) {
-    foreach ($nm in @((& $script:tmux list-sessions -F "#{session_name}" 2>$null))) {
-        if ($nm -match $pat) { [void](Invoke-Tmux @('kill-session', '-t', $nm)) }
+# sweep leftovers from crashed previous runs.
+# snapshot once: killing the last session exits the tmux server, which would
+# make a later list-sessions error (EAP=Stop turns its stderr into a failure)
+$leftovers = @()
+try { $leftovers = @((& $script:tmux list-sessions -F "#{session_name}" 2>$null)) } catch { }
+foreach ($nm in $leftovers) {
+    foreach ($pat in @('echo-.*', 'ping-.*', 'pi-t.*', 'qtest-.*')) {
+        if ($nm -match $pat) { [void](Invoke-Tmux @('kill-session', '-t', $nm)); break }
     }
 }
 Kill-PortListener 18099
@@ -89,6 +93,15 @@ try {
     $sg = New-Session -Profile 'ping' -Args2 @('ping.exe', '-n', '30', '127.0.0.1')
     Assert 'generic session created' ($sg -match '^ping-\d{6}$')
     $script:created += $sg
+
+    # --- detach (headless start, no attach) ---
+    $dOut = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 'echo' --detach 2>$null) -join "\n"
+    $dName = $dOut.Trim()
+    Assert 'detach prints session name' ($dName -match '^echo-\d{6,}$')
+    $dUp = $false
+    for ($i = 0; $i -lt 10; $i++) { if (@((Get-Sessions -Profile 'echo').Name) -contains $dName) { $dUp = $true; break }; Start-Sleep -Milliseconds 200 }
+    Assert 'detach session exists' $dUp
+    Stop-Session -Profile 'echo' -Name $dName
 
     # --- pi label hook ---
     $fix = Join-Path $PSScriptRoot 'fixture-sessions'

@@ -4,6 +4,9 @@
 #   keepalive <profile-or-command> [args...]   menu: attach, or start a new one
 #   keepalive <x> -l    list sessions of x
 #   keepalive <x> -n    start a new session (skip menu), optional args after
+#   keepalive <x> --detach
+#                       start a new session, print its name, exit (headless, no attach)
+#                       (no short flag: -d is eaten by powershell's built-in -Debug)
 #   keepalive <x> -k    stop all sessions of x
 #   keepalive          pick a profile (only if more than one hook profile exists)
 #
@@ -78,7 +81,8 @@ function Get-Sessions {
     if ($r.Code -ne 0 -or -not $out) { return @() }
     $list = @()
     foreach ($line in $out) {
-        if ($line -notmatch "^$([regex]::Escape($Profile))-\S+ \d+") { continue }
+        # -\d+ (not -\S+): session suffix is a timestamp, so 'qwen' does not match 'qwen-mm-*'
+        if ($line -notmatch "^$([regex]::Escape($Profile))-\d+ \d+") { continue }
         $parts = $line -split ' ', 2
         $list += [pscustomobject]@{
             Name    = $parts[0]
@@ -223,6 +227,7 @@ foreach ($a in $All) {
         '--list' { $mode = 'list' }
         '-n' { $mode = 'new' }
         '--new' { $mode = 'new' }
+        '--detach' { $mode = 'detach' }
         '-k' { $mode = 'kill' }
         '--kill' { $mode = 'kill' }
         default {
@@ -281,6 +286,12 @@ if ($mode -eq 'kill') {
 if ($mode -eq 'new') {
     $sname = New-Session -Profile $name -Args2 $args2
     Invoke-Attach -Name $sname
+}
+
+if ($mode -eq 'detach') {
+    $sname = New-Session -Profile $name -Args2 $args2
+    Write-Output $sname
+    exit 0
 }
 
 Show-Menu -Profile $name -NewArgs $args2

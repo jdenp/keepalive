@@ -11,13 +11,8 @@ if (Test-Path -LiteralPath $bat) {
 }
 
 function Test-PortOpen {
-    # LISTEN-state check: a TCP probe would sit in a tiny listen backlog and
-    # poison later probes, so ask the kernel instead
+    # netstat LISTEN check: no TCP probe (backlog poison), no WMI (Get-NetTCPConnection can hang in-process for minutes)
     param([int]$P)
-    try {
-        $conns = Get-NetTCPConnection -State Listen -LocalPort $P -ErrorAction Stop
-        if (@($conns).Count -gt 0) { return $true }
-    } catch {}
     foreach ($l in (netstat -ano 2>$null)) {
         if ($l -match "\b:$P\s+\S+\s+LISTENING\b") { return $true }
     }
