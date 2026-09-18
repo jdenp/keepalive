@@ -11,10 +11,12 @@ if (Test-Path -LiteralPath $bat) {
 }
 
 function Test-PortOpen {
-    # netstat LISTEN check: no TCP probe (backlog poison), no WMI (Get-NetTCPConnection can hang in-process for minutes)
+    # loopback/any-addr LISTEN only: tailscaled holds 100.111.152.67:8082 and a bare :P regex would match it
     param([int]$P)
     foreach ($l in (netstat -ano 2>$null)) {
-        if ($l -match "\b:$P\s+\S+\s+LISTENING\b") { return $true }
+        $f = @($l.Trim() -split '\s+')
+        if ($f.Count -ge 5 -and $f[3] -eq 'LISTENING' -and
+            ($f[1] -eq "127.0.0.1:$P" -or $f[1] -eq "0.0.0.0:$P" -or $f[1] -eq ':::' + $P -or $f[1] -eq "[::]:$P")) { return $true }
     }
     return $false
 }
