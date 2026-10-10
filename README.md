@@ -17,16 +17,33 @@ Copy `keepalive.cmd` from this repo to a folder on your PATH
 ## Use
 
 ```
-keepalive <name-or-command> [args...]   menu: attach, or start a new one
+keepalive                        dashboard of all sessions (all profiles)
+keepalive <name-or-command> [args...]   start it as a new session and attach
 keepalive <x> -l                   list sessions of x
-keepalive <x> -n [args]            start a new one (skip menu)
 keepalive <x> -k                   stop all sessions of x
+keepalive <x> --detach             start a new session, print its name, exit
+keepalive --flat                   list all sessions, one per line
+                                   name|profile|started|label
+keepalive --flat --launch <x>      start a new session of x, print its name
+keepalive --flat --stop <name>     stop one session by exact name
+keepalive --flat --log <name>      print recent pane output of a session
+keepalive --help                   full human and agent usage
 ```
 
-In the menu: `1-N` attach, `s1` (or `s 1`) stop session 1, Enter start new, `q` quit.
+Dashboard: `1-N` attach, `s1` (or `s 1`) stop session 1, Enter start new
+(prompts for a name), `q` quit. On an interactive terminal the dashboard is a
+small colored TUI; when output is piped it falls back to plain text (same keys).
 
-On an interactive terminal the menu is a small colored TUI; when output is
-piped it falls back to plain text (same keys).
+`--flat` is the AI-agent path: no prompts, plain stdout. Lock your own session
+before any stop/kill work so you cannot kill yourself:
+
+```
+keepalive --flat --launch <x> --lock     start a new session and lock it
+keepalive --lock-process <name>          refuse --stop/-k for a session
+keepalive --unlock-process <name>        clear the lock
+```
+
+A locked session is refused with a warning until unlocked.
 
 ## Examples
 

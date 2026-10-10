@@ -53,7 +53,7 @@ function Kill-PortListener {
 $leftovers = @()
 try { $leftovers = @((& $script:tmux list-sessions -F "#{session_name}" 2>$null)) } catch { }
 foreach ($nm in $leftovers) {
-    foreach ($pat in @('echo-.*', 'ping-.*', 'pi-t.*', 'qtest-.*')) {
+    foreach ($pat in @('echo-.*', 'ping-.*', 'pi-t.*', 'qtest-.*', 'qst-.*', 'q-.*')) {
         if ($nm -match $pat) { [void](Invoke-Tmux @('kill-session', '-t', $nm)); break }
     }
 }
@@ -101,7 +101,7 @@ try {
     $dUp = $false
     for ($i = 0; $i -lt 10; $i++) { if (@((Get-Sessions -Profile 'echo').Name) -contains $dName) { $dUp = $true; break }; Start-Sleep -Milliseconds 200 }
     Assert 'detach session exists' $dUp
-    Stop-Session -Profile 'echo' -Name $dName
+    [void](Stop-Session -Profile 'echo' -Name $dName)
 
     # --- pi label hook ---
     $fix = Join-Path $PSScriptRoot 'fixture-sessions'
@@ -184,21 +184,130 @@ try {
     Assert 'qwen stop frees port' $freed
     Remove-Item Env:QWEN_SERVER -ErrorAction SilentlyContinue
 
-    # --- TUI menu ---
+    # --- qwens hooks ---
+    $env:QWENS_SERVER = Join-Path $PSScriptRoot 'dummy_server.bat'
+    $qsLabel = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hooks\qwens\label.ps1') 'qwens-test-1' '1700000000' 2>$null
+    Assert 'qwens label shows port' ((@($qsLabel) -join ' ') -match 'llama :18099 (up|down)')
+
+    Kill-PortListener 18099
+    Start-Sleep -Milliseconds 500
+    Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'qwen\qwens.log') -ErrorAction SilentlyContinue
+    $null = New-TestSession 'qst-1' "cmd.exe /c C:\Repos\keepalive\tests\qwens_test_start.bat"
+    $up = $false
+    for ($i = 0; $i -lt 30; $i++) { Start-Sleep -Seconds 1; if (Test-PortOpen -P 18099) { $up = $true; break } }
+    $pane = (& $script:tmux capture-pane -pt qst-1 -p 2>$null) -join "`n"
+    Assert 'qwens start opens port' $up
+    Assert 'qwens start banner in pane' ($pane -match 'starting qwens server on :18099')
+    $logPath = Join-Path $env:LOCALAPPDATA 'qwen\qwens.log'
+    $logHas = $false
+    if (Test-Path -LiteralPath $logPath) { $logHas = @((Select-String -Path $logPath -Pattern 'dummy llama-server on --port 18099' -ErrorAction SilentlyContinue)).Count -gt 0 }
+    Assert 'qwens log written' $logHas
+
+    $null = New-TestSession 'qst-2' "cmd.exe /c C:\Repos\keepalive\tests\qwens_test_start.bat"
+    Start-Sleep -Seconds 3
+    $null = & $script:tmux has-session -t qst-2 2>$null
+    $q2ok = ($LASTEXITCODE -eq 0)
+    $pane2 = ''
+    if ($q2ok) { $pane2 = (& $script:tmux capture-pane -pt qst-2 -p 2>$null) -join "`n" }
+    Assert 'second qwens session alive' $q2ok
+    Assert 'second qwens tails instead of double-start' ($pane2 -match 'already running on :18099')
+
+    $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hooks\qwens\stop.ps1') 2>$null
+    $freed = $false
+    for ($i = 0; $i -lt 20; $i++) { Start-Sleep -Milliseconds 500; if (-not (Test-PortOpen -P 18099)) { $freed = $true; break } }
+    Assert 'qwens stop frees port' $freed
+    Remove-Item Env:QWENS_SERVER -ErrorAction SilentlyContinue
+
+    # --- bare keepalive x: start a new session and attach ---
+    $beforeNames = @(Get-Sessions -Profile 'echo').Name
+    $null = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 'echo' 2>$null)
+    $after = Get-Sessions -Profile 'echo'
+    $newNames = @($after.Name | Where-Object { $beforeNames -notcontains $_ })
+    Assert 'bare keepalive x starts a new session' ($newNames.Count -eq 1)
+    if ($newNames.Count -eq 1) { [void](Stop-Session -Profile 'echo' -Name $newNames[0]) }
+
+    # --- mode without a name is a usage error ---
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') -l 2>$null
+    Assert 'mode without name fails' ($LASTEXITCODE -eq 1)
+
+    # --- dashboard (all profiles) ---
+    $dashOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    Assert 'dashboard lists all profiles' (($dashOut -match 'keepalive') -and ($dashOut -match 'echo-') -and ($dashOut -match 'ping-'))
+
     $env:KEEPALIVE_FORCE_TUI = '1'
-    $tuiOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 'echo' 2>$null) -join "`n"
-    Assert 'tui renders colored menu' (($tuiOut -match 'keepalive') -and ($tuiOut -match 'echo-') -and $tuiOut.Contains([char]27))
-    $null = "s1`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 'echo' 2>$null
+    $tuiOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    Assert 'tui renders colored dashboard' (($tuiOut -match 'keepalive') -and ($tuiOut -match 'echo-') -and $tuiOut.Contains([char]27))
+    # empty Enter asks for a name, empty name is a no-op, q quits
+    $null = "`n`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null
+    Assert 'tui empty enter is a no-op' ($LASTEXITCODE -eq 0)
+    $null = "s1`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null
     $stillThere = $false
     foreach ($nm in @(Get-Sessions -Profile 'echo')) { if ($nm.Name -eq $s1) { $stillThere = $true } }
     Assert 'tui stop stops the first session' (-not $stillThere)
     $env:KEEPALIVE_FORCE_TUI = ''
-    $plainOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 'echo' 2>$null) -join "`n"
-    Assert 'plain menu when piped' (($plainOut -match 'keepalive') -and (-not $plainOut.Contains([char]27)))
+    $plainOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    Assert 'plain dashboard when piped' (($plainOut -match 'keepalive') -and (-not $plainOut.Contains([char]27)))
+
+    # --- agent mode: --flat, --launch, --stop, --log, --help ---
+    $helpOut = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --help 2>$null) -join "`n"
+    Assert 'help shows both pathways' (($helpOut -match 'HUMAN') -and ($helpOut -match 'AI AGENT') -and ($helpOut -match '--flat'))
+
+    $flatOut = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --flat 2>$null)
+    $flatLines = @($flatOut | Where-Object { $_ })
+    $flatOk = $flatLines.Count -ge 2
+    foreach ($fl in $flatLines) { if ($fl -notmatch '^\S+\|\S+\|\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\|') { $flatOk = $false } }
+    Assert 'flat lists all profiles' ($flatOk -and ($flatLines -join "`n" -match 'echo-') -and ($flatLines -join "`n" -match 'ping-'))
+
+    $fLaunch = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --flat --launch 'echo' 2>$null) -join "`n"
+    $fName = $fLaunch.Trim()
+    Assert 'flat launch prints session name' ($fName -match '^echo-\d{6,}$')
+    $fUp = $false
+    for ($i = 0; $i -lt 10; $i++) { if (@((Get-Sessions -Profile 'echo').Name) -contains $fName) { $fUp = $true; break }; Start-Sleep -Milliseconds 200 }
+    Assert 'flat launch session exists' $fUp
+
+    $logOut = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --flat --log $fName 2>$null) -join "`n"
+    Assert 'flat log shows pane output' ($logOut -match 'Pinging')
+
+    $fStop = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --flat --stop $fName 2>$null) -join "`n"
+    Assert 'flat stop reports stopped' ($fStop -eq "stopped $fName")
+    $fGone = $false
+    for ($i = 0; $i -lt 10; $i++) { if (@((Get-Sessions -Profile 'echo').Name) -notcontains $fName) { $fGone = $true; break }; Start-Sleep -Milliseconds 200 }
+    Assert 'flat stop kills the session' $fGone
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --flat --stop 'nope-123456' 2>$null
+    Assert 'flat stop unknown name fails' ($LASTEXITCODE -eq 1)
+
+    # --- process lock: locked sessions refuse stop until unlocked ---
+    $lockName = New-Session -Profile 'echo' -Args2 @()
+    $script:created += $lockName
+    $lockOut = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --lock-process $lockName 2>$null) -join "`n"
+    Assert 'lock reports locked' ($lockOut -match "^lock $lockName")
+    $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --flat --stop $lockName 2>$null
+    Assert 'stop of locked session fails' ($LASTEXITCODE -eq 1)
+    $lockAlive = $false
+    foreach ($nm in @(Get-Sessions -Profile 'echo').Name) { if ($nm -eq $lockName) { $lockAlive = $true } }
+    Assert 'locked session survives stop' $lockAlive
+    Assert 'Stop-Session refuses locked' (-not (Stop-Session -Profile 'echo' -Name $lockName))
+    $unlockOut = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --unlock-process $lockName 2>$null) -join "`n"
+    Assert 'unlock reports unlocked' ($unlockOut -match "^unlock $lockName")
+    $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --flat --stop $lockName 2>$null
+    Assert 'stop after unlock works' ($LASTEXITCODE -eq 0)
+
+    # launch --lock: the new session comes up locked
+    $lName = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --flat --launch 'echo' --lock 2>$null) -join "`n"
+    Assert 'launch --lock prints name' ($lName -match '^echo-\d{6,}')
+    $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --flat --stop $lName 2>$null
+    Assert 'launched-locked session refuses stop' ($LASTEXITCODE -eq 1)
+    $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --unlock-process $lName 2>$null
+    $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --flat --stop $lName 2>$null
+    Assert 'launched-locked session stops after unlock' ($LASTEXITCODE -eq 0)
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --lock-process 'nope-123456' 2>$null
+    Assert 'lock unknown name fails' ($LASTEXITCODE -eq 1)
 
     # --- stop --- ($s1 was already stopped by the TUI test)
     $before = (Get-Sessions -Profile 'echo').Count
-    Stop-Session -Profile 'echo' -Name $s2
+    [void](Stop-Session -Profile 'echo' -Name $s2)
     Start-Sleep -Milliseconds 500
     $after = (Get-Sessions -Profile 'echo').Count
     Assert 'stop session kills it' ($after -eq ($before - 1))

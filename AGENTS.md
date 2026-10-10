@@ -20,9 +20,12 @@
 ## Architecture
 
 `keepalive.cmd` -> `keepalive-launch.ps1` (core, PowerShell 5.1, no dependencies) +
-`hooks/<name>/*.ps1` (optional per-profile behaviour). The menu is plain text
-by default; on a real TTY, `tui.ps1` renders a colored no-flicker menu
-(ANSI, in-place redraw, same keys).
+`hooks/<name>/*.ps1` (optional per-profile behaviour). Bare `keepalive` opens a
+dashboard of ALL keepalive sessions (every profile); `keepalive <x>` starts x as
+a new session and attaches. The dashboard is plain text by default; on a real
+TTY, `tui.ps1` renders a colored no-flicker view (ANSI, in-place redraw, same
+keys). `--flat` is the AI-agent path: no prompts, one plain-stdout line per
+session (`name|profile|started|label`), plus `--launch/--stop/--log`.
 
 A "profile" is either a `hooks/<name>/` folder or any ad-hoc command line,
 wrapped as `cmd.exe /c <command>` and named after its first word
@@ -32,6 +35,13 @@ disconnects, which is the whole point.
 
 Session names: `<profile>-<HHmmss>` (with a `-N` suffix on same-second races,
 serialized by a per-profile named mutex `Local\keepalive-<profile>`).
+
+Session lock: a tmux user option `@keepalive_locked 1` per session. A locked
+session is refused by every stop path (`-k`, `--stop`, dashboard `sN`, TUI `sN`,
+in-process `Stop-Session`) with a warning, until `--unlock-process`. `--lock`
+locks a session at launch; `--lock-process` locks an existing one. The tmux build
+has no `unset-option`, so unlock is `set-option ... 0`. Agents must lock their own
+session before any stop/kill work, so a bug cannot kill the agent's own session.
 
 ## Wrapping an existing script (the common task)
 
@@ -124,6 +134,7 @@ serialized by a per-profile named mutex `Local\keepalive-<profile>`).
 - `KEEPALIVE_PI_DRY_RUN=1`: pi hook prints `DRYRUN: <args>` instead of launching pi.
 - `KEEPALIVE_FORCE_TUI=1`: force the colored menu even when output is piped (tests).
 - `QWEN_SERVER`: override the qwen server bat (tests use a dummy on port 18099).
+- `QWENS_SERVER`: override the qwens server bat (tests share the same dummy).
 - Tests own the 18099 port lifecycle; a stale listener from a killed pane
   must be cleaned before the qwen tests.
 

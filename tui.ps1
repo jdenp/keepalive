@@ -1,5 +1,5 @@
-# tui.ps1: colored menu for keepalive. Loaded by keepalive-launch.ps1 on TTYs.
-# Keys: 1-N attach, sN stop, Enter new, q quit. Redraws in place (no clear).
+# tui.ps1: colored dashboard for keepalive. Loaded by keepalive-launch.ps1 on TTYs.
+# Keys: 1-N attach, sN stop, Enter start named, q quit. Redraws in place (no clear).
 
 function Enable-VtOutput {
     # conhost ignores ANSI unless virtual terminal processing is enabled
@@ -43,8 +43,7 @@ function Clip-Visible {
     return $out
 }
 
-function Show-TuiMenu {
-    param([string]$Profile, [string[]]$NewArgs)
+function Show-TuiDashboard {
     Enable-VtOutput
     $e = [char]27 + '['
     $rst = "${e}0m"; $bold = "${e}1m"; $cyan = "${e}36m"
@@ -54,20 +53,20 @@ function Show-TuiMenu {
     $prevLines = 0
     $first = $true
     while ($true) {
-        $sessions = Get-Sessions -Profile $Profile
-        $labels = Get-Labels -Profile $Profile -Sessions $sessions
-        $count = if ($sessions) { $sessions.Count } else { 0 }
+        $all = Get-AllSessions
+        $labels = Get-AllLabels -All $all
+        $count = $all.Count
         $lines = @()
-        $lines += "${cyan}${bold}keepalive ${rst}'${bold}$Profile${rst}'${rst}  ${dim}${count} running${rst}"
+        $lines += "${cyan}${bold}keepalive${rst}  ${dim}${count} running${rst}"
         if ($count -eq 0) { $lines += "  ${dim}no sessions${rst}" }
         $n = 1
-        foreach ($s in $sessions) {
+        foreach ($s in $all) {
             $label = ''
-            if ($labels[$n - 1]) { $label = "  ${yellow}$($labels[$n - 1])${rst}" }
+            if ($labels.ContainsKey($s.Name)) { $label = "  ${yellow}$($labels[$s.Name])${rst}" }
             $lines += "  ${green}${bold}${n})${rst} ${bold}$($s.Name)${rst}  ${dim}started $($s.Started)${rst}${label}"
             $n++
         }
-        $lines += "  ${dim}1-N attach   s1 stop #1   Enter new   q quit${rst}"
+        $lines += "  ${dim}1-N attach   s1 stop #1   Enter start name   q quit${rst}"
         $prompt = "${bold} > ${rst}"
         # keep the frame at least as tall as the last one, so shrinking
         # (sessions stopped) overwrites every old line
@@ -100,18 +99,23 @@ function Show-TuiMenu {
         if ($null -eq $choice) { exit 0 }
         if ($choice -match '^[qQ]') { exit 0 }
         if ($choice -match '^\s*$') {
-            $name = New-Session -Profile $Profile -Args2 $NewArgs
-            Invoke-Attach -Name $name
+            Write-Host "${bold}start: ${rst}"
+            $raw = [Console]::ReadLine()
+            if ($null -eq $raw -or $raw -match '^\s*$') { continue }
+            $rp = Resolve-AdHoc -Name $raw -Args2 @()
+            $sname = New-Session -Profile $rp[0] -Args2 $rp[1]
+            Invoke-Attach -Name $sname
         }
         if ($choice -match '^\s*s\s?(\d+)\s*$') {
             $idx = [int]$Matches[1]
             if ($idx -ge 1 -and $idx -le $count) {
-                Stop-Session -Profile $Profile -Name $sessions[$idx - 1].Name
+                $target = $all[$idx - 1]
+                [void](Stop-Session -Profile $target.Profile -Name $target.Name)
                 continue
             }
         }
         if ($choice -match '^\d+$' -and [int]$choice -ge 1 -and [int]$choice -le $count) {
-            Invoke-Attach -Name $sessions[[int]$choice - 1].Name
+            Invoke-Attach -Name $all[[int]$choice - 1].Name
         }
     }
 }
