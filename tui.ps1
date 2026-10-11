@@ -47,11 +47,12 @@ function Show-TuiDashboard {
     Enable-VtOutput
     $e = [char]27 + '['
     $rst = "${e}0m"; $bold = "${e}1m"; $cyan = "${e}36m"
-    $green = "${e}32m"; $yellow = "${e}33m"; $dim = "${e}90m"
+    $green = "${e}32m"; $yellow = "${e}33m"; $red = "${e}31m"; $dim = "${e}90m"
     $width = 80
     try { $w = [Console]::WindowWidth; if ($w -ge 40) { $width = $w } } catch {}
     $prevLines = 0
     $first = $true
+    $msg = ''
     while ($true) {
         $all = Get-AllSessions
         $labels = Get-AllLabels -All $all
@@ -66,6 +67,7 @@ function Show-TuiDashboard {
             $lines += "  ${green}${bold}${n})${rst} ${bold}$($s.Name)${rst}  ${dim}started $($s.Started)${rst}${label}"
             $n++
         }
+        if ($msg) { $lines += "  ${red}${msg}${rst}" }
         $lines += "  ${dim}1-N attach   s1 stop #1   Enter start name   q quit${rst}"
         $prompt = "${bold} > ${rst}"
         # keep the frame at least as tall as the last one, so shrinking
@@ -97,14 +99,18 @@ function Show-TuiDashboard {
         $prevLines = $lines.Count + 1
         $choice = [Console]::ReadLine()
         if ($null -eq $choice) { exit 0 }
-        if ($choice -match '^[qQ]') { exit 0 }
+        $msg = ''
+        if ($choice -match '^\s*[qQ]\s*$') { exit 0 }
         if ($choice -match '^\s*$') {
             Write-Host "${bold}start: ${rst}"
             $raw = [Console]::ReadLine()
-            if ($null -eq $raw -or $raw -match '^\s*$') { continue }
-            $rp = Resolve-AdHoc -Name $raw -Args2 @()
-            $sname = New-Session -Profile $rp[0] -Args2 $rp[1]
-            Invoke-Attach -Name $sname
+            if ($null -eq $raw) { exit 0 }
+            if ($raw -match '^\s*$') { continue }
+            try {
+                $rp = Resolve-Start -Name $raw -Args2 @()
+                $sname = New-Session -Profile $rp[0] -Args2 $rp[1]
+                Invoke-Attach -Name $sname
+            } catch { $msg = $_.Exception.Message; continue }
         }
         if ($choice -match '^\s*s\s?(\d+)\s*$') {
             $idx = [int]$Matches[1]
@@ -113,9 +119,11 @@ function Show-TuiDashboard {
                 [void](Stop-Session -Profile $target.Profile -Name $target.Name)
                 continue
             }
+            $msg = "no session #$idx"
         }
         if ($choice -match '^\d+$' -and [int]$choice -ge 1 -and [int]$choice -le $count) {
             Invoke-Attach -Name $all[[int]$choice - 1].Name
         }
+        if (-not $msg) { $msg = "invalid choice: $choice   (1-N attach, sN stop, Enter start name, q quit)" }
     }
 }

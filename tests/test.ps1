@@ -103,6 +103,15 @@ try {
     Assert 'detach session exists' $dUp
     [void](Stop-Session -Profile 'echo' -Name $dName)
 
+    # --- ad-hoc command validation ---
+    $badOut = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 'no-such-cmd-xyz' --detach 2>$null) -join "`n"
+    Assert 'unknown ad-hoc command refused' ($LASTEXITCODE -eq 1 -and ($badOut -match 'not a hook profile'))
+    Assert 'unknown ad-hoc command creates no session' ((Get-Sessions -Profile 'no-such-cmd-xyz').Count -eq 0)
+    $okName = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 'ping.exe' '-n' '3' '127.0.0.1' --detach 2>$null) -join "`n"
+    $okName = $okName.Trim()
+    Assert 'known ad-hoc command launches' ($okName -match '^ping-\d{6,}$')
+    if ($okName) { [void](Stop-Session -Profile 'ping' -Name $okName) }
+
     # --- pi label hook ---
     $fix = Join-Path $PSScriptRoot 'fixture-sessions'
     Remove-Item -Recurse -Force $fix -ErrorAction SilentlyContinue
@@ -178,6 +187,17 @@ try {
     Assert 'second qwen session alive' $q2ok
     Assert 'second qwen tails instead of double-start' ($pane2 -match 'already running on :18099')
 
+    # server running but no log: the pane idles alive instead of exiting
+    Remove-Item -LiteralPath $logPath -ErrorAction SilentlyContinue
+    $null = New-TestSession 'qtest-3' "cmd.exe /c C:\Repos\keepalive\tests\qwen_test_start.bat"
+    Start-Sleep -Seconds 3
+    $null = & $script:tmux has-session -t qtest-3 2>$null
+    $q3ok = ($LASTEXITCODE -eq 0)
+    $pane3 = ''
+    if ($q3ok) { $pane3 = (& $script:tmux capture-pane -pt qtest-3 -p 2>$null) -join "`n" }
+    Assert 'no-log qwen session idles alive' $q3ok
+    Assert 'no-log qwen shows already running' ($pane3 -match 'already running on :18099')
+
     $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hooks\qwen\stop.ps1') 2>$null
     $freed = $false
     for ($i = 0; $i -lt 20; $i++) { Start-Sleep -Milliseconds 500; if (-not (Test-PortOpen -P 18099)) { $freed = $true; break } }
@@ -212,6 +232,17 @@ try {
     Assert 'second qwens session alive' $q2ok
     Assert 'second qwens tails instead of double-start' ($pane2 -match 'already running on :18099')
 
+    # server running but no log: the pane idles alive instead of exiting
+    Remove-Item -LiteralPath $logPath -ErrorAction SilentlyContinue
+    $null = New-TestSession 'qst-3' "cmd.exe /c C:\Repos\keepalive\tests\qwens_test_start.bat"
+    Start-Sleep -Seconds 3
+    $null = & $script:tmux has-session -t qst-3 2>$null
+    $q3ok = ($LASTEXITCODE -eq 0)
+    $pane3 = ''
+    if ($q3ok) { $pane3 = (& $script:tmux capture-pane -pt qst-3 -p 2>$null) -join "`n" }
+    Assert 'no-log qwens session idles alive' $q3ok
+    Assert 'no-log qwens shows already running' ($pane3 -match 'already running on :18099')
+
     $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hooks\qwens\stop.ps1') 2>$null
     $freed = $false
     for ($i = 0; $i -lt 20; $i++) { Start-Sleep -Milliseconds 500; if (-not (Test-PortOpen -P 18099)) { $freed = $true; break } }
@@ -244,9 +275,15 @@ try {
     $stillThere = $false
     foreach ($nm in @(Get-Sessions -Profile 'echo')) { if ($nm.Name -eq $s1) { $stillThere = $true } }
     Assert 'tui stop stops the first session' (-not $stillThere)
+    $tuiBad = @("qwens`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    Assert 'tui names invalid choice' ($tuiBad -match 'invalid choice: qwens')
+    $tuiStartBad = @("`nno-such-cmd-xyz`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    Assert 'tui start rejects unknown name' ($tuiStartBad -match 'not a hook profile')
     $env:KEEPALIVE_FORCE_TUI = ''
     $plainOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
     Assert 'plain dashboard when piped' (($plainOut -match 'keepalive') -and (-not $plainOut.Contains([char]27)))
+    $plainStartBad = @("`nno-such-cmd-xyz`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    Assert 'plain start rejects unknown name' ($plainStartBad -match 'not a hook profile')
 
     # --- agent mode: --flat, --launch, --stop, --log, --help ---
     $helpOut = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') --help 2>$null) -join "`n"

@@ -173,7 +173,29 @@ function Resolve-AdHoc {
     if ($isHook) { return , @($Name, $Args2) }
     $raw = @($Name)
     if ($Args2.Count -gt 0) { $raw += $Args2 }
-    return , @(Get-ProfileName -Command $raw[0], $raw)
+    # comma binds tighter than arg passing: build the pair explicitly or $raw is eaten by -Command
+    $prof = Get-ProfileName -Command $raw[0]
+    return , @($prof, $raw)
+}
+
+function Test-CommandExists {
+    # ad-hoc first token must be runnable by cmd.exe, else the pane dies at once
+    param([string]$Token)
+    if ($Token -match '[\\/]|^:') { return (Test-Path -LiteralPath $Token) }
+    return [bool](Get-Command $Token -CommandType Application -ErrorAction SilentlyContinue)
+}
+
+function Resolve-Start {
+    # Resolve-AdHoc plus a guard: refuse ad-hoc commands that would exit immediately
+    param([string]$Name, [string[]]$Args2)
+    $rp = Resolve-AdHoc -Name $Name -Args2 $Args2
+    $hook = Join-Path $script:HooksDir (Join-Path $rp[0] 'start.ps1')
+    $tok = (@($rp[1][0]) -split '\s+')[0]
+    if (-not (Test-Path -LiteralPath $hook) -and -not (Test-CommandExists -Token $tok)) {
+        $profs = (Get-HookProfiles) -join ', '
+        throw "'$tok' is not a hook profile (profiles: $profs) and not found on PATH - the session would exit immediately"
+    }
+    return $rp
 }
 
 function Get-Labels {
@@ -289,13 +311,15 @@ function Show-Dashboard {
         }
         Write-Host "  [1-$count] attach   s1 stop #1   Enter start name   q quit"
         $choice = Read-Host ' >'
-        if ($choice -match '^[qQ]') { exit 0 }
+        if ($choice -match '^\s*[qQ]\s*$') { exit 0 }
         if ($choice -match '^\s*$') {
             $raw = Read-Host 'start'
             if ($raw -match '^\s*$') { continue }
-            $rp = Resolve-AdHoc -Name $raw -Args2 @()
-            $sname = New-Session -Profile $rp[0] -Args2 $rp[1]
-            Invoke-Attach -Name $sname
+            try {
+                $rp = Resolve-Start -Name $raw -Args2 @()
+                $sname = New-Session -Profile $rp[0] -Args2 $rp[1]
+                Invoke-Attach -Name $sname
+            } catch { Write-Host $_.Exception.Message }
         }
         if ($choice -match '^\s*s\s?(\d+)\s*$') {
             $idx = [int]$Matches[1]
@@ -436,7 +460,7 @@ if (-not $name) {
     exit 0
 }
 
-$rp = Resolve-AdHoc -Name $name -Args2 $args2
+try { $rp = Resolve-Start -Name $name -Args2 $args2 } catch { Write-Host $_.Exception.Message; exit 1 }
 $name = $rp[0]
 $args2 = $rp[1]
 

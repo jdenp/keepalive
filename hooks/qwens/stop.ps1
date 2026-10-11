@@ -8,7 +8,8 @@ if (Test-Path -LiteralPath $bat) {
 }
 $pids = @()
 foreach ($l in (netstat -ano 2>$null)) {
-    if ($l -match "\b:$port\s+\S+\s+LISTENING\s+(\d+)$") { $pids += $Matches[1] }
+    # trim: captured (non-console) netstat lines carry a trailing \r that breaks the $ anchor
+    if ($l.Trim() -match "\b:$port\s+\S+\s+LISTENING\s+(\d+)$") { $pids += $Matches[1] }
 }
 $pids = @($pids | Select-Object -Unique)
 foreach ($p in $pids) {

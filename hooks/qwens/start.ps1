@@ -48,8 +48,10 @@ if (Test-PortOpen -P $port) {
     if (Test-Path -LiteralPath $log) {
         Get-Content -LiteralPath $log -Tail 20
         Get-LogTail -Path $log -Start (Get-Item -LiteralPath $log).Length
+    } else {
+        # server started outside keepalive, no log to stream: idle so the pane survives
+        while ($true) { Start-Sleep -Seconds 3600 }
     }
-    exit 0
 }
 
 if (-not (Test-Path -LiteralPath $bat)) {
