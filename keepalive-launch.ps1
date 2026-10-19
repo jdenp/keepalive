@@ -281,10 +281,18 @@ function Stop-Session {
     return $true
 }
 
+function Disable-ClientHyperlinks {
+    # tmux-windows crashes the server redrawing an OSC 8 hyperlink (Claude Code prints them) on attach
+    $r = Invoke-Tmux @('show-options', '-s', 'terminal-overrides')
+    if (($r.Out -join ' ') -match 'Hls@') { return }
+    [void](Invoke-Tmux @('set-option', '-as', 'terminal-overrides', ',*:Hls@'))
+}
+
 function Invoke-Attach {
     param([string]$Name)
     # redirected stdin cannot attach (tmux fails on non-tty): print the name and exit
     if ([Console]::IsInputRedirected) { Write-Output $Name; exit 0 }
+    Disable-ClientHyperlinks
     & $script:tmux attach-session -t $Name
     exit $LASTEXITCODE
 }
