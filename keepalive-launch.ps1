@@ -236,7 +236,8 @@ function New-Session {
             $name = "$Profile-" + (Get-Date).ToString('HHmmss') + "$i"; $i++
         }
         $cmd = Build-Command -Profile $Profile -Args2 $Args2
-        $r = Invoke-Tmux @('new-session', '-d', '-s', $name, $cmd)
+        # Claude Code falls back to its inline renderer over SSH, which tmux mangles on scroll and which has no PgUp/PgDn
+        $r = Invoke-Tmux @('new-session', '-d', '-s', $name, '-e', 'CLAUDE_CODE_NO_FLICKER=1', $cmd)
         if ($r.Code -ne 0) { throw "tmux new-session failed: $($r.Out)" }
         return $name
     } finally {
