@@ -31,6 +31,9 @@ $tuiFile = Join-Path $PSScriptRoot 'tui.ps1'
 if (Test-Path -LiteralPath $tuiFile) { . $tuiFile }
 
 function Find-Tmux {
+    # bundled build first: it carries the wide character width fix
+    $bundled = Join-Path $PSScriptRoot 'tmux\tmux.exe'
+    if (Test-Path -LiteralPath $bundled) { return $bundled }
     $c = Get-Command tmux.exe -ErrorAction SilentlyContinue
     if ($c) { return $c.Source }
     $link = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\tmux.exe'

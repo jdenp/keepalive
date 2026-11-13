@@ -349,6 +349,12 @@ try {
     $after = (Get-Sessions -Profile 'echo').Count
     Assert 'stop session kills it' ($after -eq ($before - 1))
 
+    # --- wide character width (bundled tmux patch) ---
+    New-TestSession 'widetest-000001' ('powershell.exe -NoProfile -ExecutionPolicy Bypass -File ' + (Join-Path $PSScriptRoot 'wide_char.ps1'))
+    Start-Sleep -Seconds 3
+    $cx = (Invoke-Tmux @('display-message', '-p', '-t', 'widetest-000001', '#{cursor_x}')).Out
+    Assert 'wide character advances the cursor two columns' ([string]$cx -eq '2')
+
     Remove-Item -Recurse -Force $fix -ErrorAction SilentlyContinue
 }
 finally {

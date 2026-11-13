@@ -5,9 +5,12 @@ anywhere (laptop, phone, desktop) and the process keeps going while you are away
 
 ## Install (Windows)
 
-```
-winget install arndawg.tmux-windows
-```
+tmux is bundled: `tmux/tmux.exe` is a local fork of
+[arndawg/tmux-windows](https://github.com/arndawg/tmux-windows) `v3.6a-win32.7`
+with `tmux/wide-char-width.patch` applied. Upstream counts every non-ASCII
+character as one column, which corrupts TUIs (pi, Claude Code) on any screen
+with emoji or CJK text. `tmux/build.ps1` rebuilds it. A tmux server that is
+already running keeps the old behaviour until it exits.
 
 Copy `keepalive.cmd` from this repo to a folder on your PATH
 (e.g. `C:\Users\<you>\.local\bin`). For git-bash, add an extensionless
