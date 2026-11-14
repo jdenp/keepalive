@@ -90,6 +90,12 @@ session before any stop/kill work, so a bug cannot kill the agent's own session.
 - The server starts from sshd with a minimal environment. The user PATH is
   injected via `set-environment -g PATH` in `~/.tmux.conf`; panes otherwise
   cannot find `python` etc.
+- The server can hang with one thread spinning a full core (2026-11-15, cause
+  unknown). `Invoke-Tmux` times out, dumps the server and exits 3. Open the dump
+  in WinDbg to find the loop before patching anything.
+- A server started from an agent shell (Claude Code Bash/PowerShell tools) dies
+  when the tool call ends, taking its sessions with it. Launch through WMI
+  (`Invoke-CimMethod Win32_Process Create`) so the server outlives the call.
 - `kill-session` can orphan grandchild processes (e.g. a python port
   listener). Stop hooks must kill the listener explicitly.
 - Wheel scroll is terminal-dependent (verified): Windows Terminal sends real

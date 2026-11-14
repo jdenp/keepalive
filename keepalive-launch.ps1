@@ -73,13 +73,95 @@ function Build-Command {
     return "cmd.exe /c " + ($Args2 -join ' ')
 }
 
+$script:TmuxTimeoutSec = 10
+if ($env:KEEPALIVE_TMUX_TIMEOUT_SEC) { $script:TmuxTimeoutSec = [int]$env:KEEPALIVE_TMUX_TIMEOUT_SEC }
+$script:DumpDir = Join-Path $env:LOCALAPPDATA 'keepalive\dumps'
+
+function Join-ProcessArgs {
+    # Windows command-line quoting for ProcessStartInfo.Arguments
+    param([string[]]$ArgList)
+    $parts = foreach ($a in $ArgList) {
+        if ($a -ne '' -and $a -notmatch '[\s"]') { $a; continue }
+        '"' + ($a -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"'
+    }
+    return ($parts -join ' ')
+}
+
+function Find-TmuxServer {
+    return Get-CimInstance Win32_Process -Filter "Name='tmux.exe'" | Where-Object { $_.CommandLine -match '\s-D(\s|$)' } | Select-Object -First 1
+}
+
+function Save-ProcessDump {
+    # full memory dump through dbghelp; returns the dump path, or $null on failure
+    param([int]$ProcessId)
+    if (-not ('KeepaliveDump' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class KeepaliveDump {
+    [DllImport("dbghelp.dll", SetLastError = true)]
+    public static extern bool MiniDumpWriteDump(IntPtr hProcess, uint processId, SafeFileHandle hFile, uint dumpType, IntPtr exceptionParam, IntPtr userStreamParam, IntPtr callbackParam);
+}
+'@
+    }
+    try {
+        $proc = Get-Process -Id $ProcessId -ErrorAction Stop
+        [void](New-Item -ItemType Directory -Force -Path $script:DumpDir)
+        $path = Join-Path $script:DumpDir ("tmux-{0}-{1}.dmp" -f $ProcessId, (Get-Date -Format 'yyyyMMdd-HHmmss'))
+        $fs = [System.IO.File]::Create($path)
+        try { $ok = [KeepaliveDump]::MiniDumpWriteDump($proc.Handle, [uint32]$ProcessId, $fs.SafeFileHandle, 2, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero) } finally { $fs.Close() }
+        if ($ok) { return $path }
+        Remove-Item -LiteralPath $path -ErrorAction SilentlyContinue
+    } catch { }
+    return $null
+}
+
+function Report-HungServer {
+    # tmux client got no answer: dump the server so the hang can be debugged, then tell the user how to recover
+    param([string]$Command)
+    Write-Host "tmux server did not answer '$Command' within $($script:TmuxTimeoutSec) seconds."
+    $server = Find-TmuxServer
+    if (-not $server) { Write-Host 'no tmux server process found.'; return }
+    $id = [int]$server.ProcessId
+    $p = Get-Process -Id $id -ErrorAction SilentlyContinue
+    if ($p) {
+        $c1 = $p.TotalProcessorTime.TotalSeconds
+        Start-Sleep -Seconds 2
+        $p.Refresh()
+        $busy = [math]::Round(($p.TotalProcessorTime.TotalSeconds - $c1) / 2 * 100)
+        Write-Host "tmux server: process $id, started $($p.StartTime), $busy% of one core over 2 seconds."
+    }
+    Write-Host 'writing a memory dump of the server...'
+    $dump = Save-ProcessDump -ProcessId $id
+    if ($dump) { Write-Host "dump: $dump" } else { Write-Host 'dump failed.' }
+    Write-Host "recover: Stop-Process -Id $id (ends every keepalive session), then start them again."
+}
+
 function Invoke-Tmux {
-    # native stderr must not surface as error records (EAP=Stop elsewhere would throw)
+    # runs a non-interactive tmux command; a hung server is reported and the script exits 3
     param([string[]]$TmuxArgs)
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'SilentlyContinue'
-    try { $out = & $script:tmux @TmuxArgs 2>$null } finally { $ErrorActionPreference = $prev }
-    return [pscustomobject]@{ Code = $LASTEXITCODE; Out = $out }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $script:tmux
+    $psi.Arguments = Join-ProcessArgs -ArgList $TmuxArgs
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.StandardOutputEncoding = [Console]::OutputEncoding
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $stdout = $proc.StandardOutput.ReadToEndAsync()
+    [void]$proc.StandardError.ReadToEndAsync()
+    if (-not $proc.WaitForExit($script:TmuxTimeoutSec * 1000)) {
+        try { $proc.Kill() } catch { }
+        Report-HungServer -Command ($TmuxArgs -join ' ')
+        exit 3
+    }
+    $proc.WaitForExit()
+    $lines = @($stdout.Result -split '\r?\n')
+    if ($lines.Count -gt 0 -and $lines[$lines.Count - 1] -eq '') { $lines = @($lines | Select-Object -First ($lines.Count - 1)) }
+    $out = $null
+    if ($lines.Count -eq 1) { $out = $lines[0] } elseif ($lines.Count -gt 1) { $out = $lines }
+    return [pscustomobject]@{ Code = $proc.ExitCode; Out = $out }
 }
 
 function Get-Sessions {

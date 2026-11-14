@@ -73,3 +73,12 @@ Drop a folder into `hooks/<name>/` to add behaviour for profile `<name>`:
 | `stop.ps1`  | optional. Gracefully stop the underlying process before the session is killed |
 
 See `AGENTS.md` for the full contract and the tmux/PowerShell gotchas.
+
+## Hung server
+
+Every tmux call times out after 10 seconds (`KEEPALIVE_TMUX_TIMEOUT_SEC`). On a
+timeout keepalive prints the server's process id and CPU use, writes a memory
+dump to `%LOCALAPPDATA%\keepalive\dumps`, and exits 3. Recover by stopping the
+server process (this ends every session) and starting the sessions again. Keep
+the dump: it shows where the server is stuck.
+
