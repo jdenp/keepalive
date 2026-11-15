@@ -1,5 +1,5 @@
 # tui.ps1: colored dashboard for keepalive. Loaded by keepalive-launch.ps1 on TTYs.
-# Keys: 1-N attach, sN stop, Enter start named, q quit. Redraws in place (no clear).
+# One prompt: 1 / 1a / 1 attach attaches, 1s / 1 stop stops, anything else starts as a command. Redraws in place.
 
 function Enable-VtOutput {
     # conhost ignores ANSI unless virtual terminal processing is enabled
@@ -68,8 +68,7 @@ function Show-TuiDashboard {
             $n++
         }
         if ($msg) { $lines += "  ${red}${msg}${rst}" }
-        $lines += "  ${dim}1-N attach   s1 stop #1   Enter start name   q quit${rst}"
-        $prompt = "${bold} > ${rst}"
+        $lines += "  ${dim}$($script:DashboardUsage)${rst}"
         # keep the frame at least as tall as the last one, so shrinking
         # (sessions stopped) overwrites every old line
         if (-not $first -and ($lines.Count + 1) -lt $prevLines) {
@@ -90,7 +89,7 @@ function Show-TuiDashboard {
         foreach ($l in $lines) { Write-Host $l }
         # write the prompt line full-width (clears any previously typed input),
         # then step back to just after the prompt for ReadLine
-        $promptFull = $prompt
+        $promptFull = "${bold} > ${rst}"
         $ppad = $width - (Get-VisibleLength $promptFull)
         if ($ppad -gt 0) { $promptFull += ' ' * $ppad }
         Write-Host "${rst}${promptFull}${rst}"
@@ -99,31 +98,6 @@ function Show-TuiDashboard {
         $prevLines = $lines.Count + 1
         $choice = [Console]::ReadLine()
         if ($null -eq $choice) { exit 0 }
-        $msg = ''
-        if ($choice -match '^\s*[qQ]\s*$') { exit 0 }
-        if ($choice -match '^\s*$') {
-            Write-Host "${bold}start: ${rst}"
-            $raw = [Console]::ReadLine()
-            if ($null -eq $raw) { exit 0 }
-            if ($raw -match '^\s*$') { continue }
-            try {
-                $rp = Resolve-Start -Name $raw -Args2 @()
-                $sname = New-Session -Profile $rp[0] -Args2 $rp[1]
-                Invoke-Attach -Name $sname
-            } catch { $msg = $_.Exception.Message; continue }
-        }
-        if ($choice -match '^\s*s\s?(\d+)\s*$') {
-            $idx = [int]$Matches[1]
-            if ($idx -ge 1 -and $idx -le $count) {
-                $target = $all[$idx - 1]
-                [void](Stop-Session -Profile $target.Profile -Name $target.Name)
-                continue
-            }
-            $msg = "no session #$idx"
-        }
-        if ($choice -match '^\d+$' -and [int]$choice -ge 1 -and [int]$choice -le $count) {
-            Invoke-Attach -Name $all[[int]$choice - 1].Name
-        }
-        if (-not $msg) { $msg = "invalid choice: $choice   (1-N attach, sN stop, Enter start name, q quit)" }
+        $msg = Invoke-DashboardCommand -Text $choice -All $all
     }
 }

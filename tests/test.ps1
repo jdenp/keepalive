@@ -268,21 +268,32 @@ try {
     $env:KEEPALIVE_FORCE_TUI = '1'
     $tuiOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
     Assert 'tui renders colored dashboard' (($tuiOut -match 'keepalive') -and ($tuiOut -match 'echo-') -and $tuiOut.Contains([char]27))
-    # empty Enter asks for a name, empty name is a no-op, q quits
+    # empty lines are a no-op, q quits
     $null = "`n`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null
     Assert 'tui empty enter is a no-op' ($LASTEXITCODE -eq 0)
-    $null = "s1`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null
+    # piped stdin cannot attach, so 1a prints the first session's name and exits
+    $attachOut = @("1a" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    Assert 'tui 1a attaches the first session' ($attachOut -match [regex]::Escape($s1))
+    $verbBad = @("1x`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    Assert 'tui names an unknown action' ($verbBad -match "unknown action 'x'")
+    $null = "1 stop`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null
     $stillThere = $false
     foreach ($nm in @(Get-Sessions -Profile 'echo')) { if ($nm.Name -eq $s1) { $stillThere = $true } }
     Assert 'tui stop stops the first session' (-not $stillThere)
-    $tuiBad = @("qwens`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
-    Assert 'tui names invalid choice' ($tuiBad -match 'invalid choice: qwens')
-    $tuiStartBad = @("`nno-such-cmd-xyz`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
-    Assert 'tui start rejects unknown name' ($tuiStartBad -match 'not a hook profile')
+    $tuiBad = @("99`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    Assert 'tui names a missing session number' ($tuiBad -match 'no session #99')
+    $tuiStartBad = @("no-such-cmd-xyz`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    Assert 'tui typed unknown command is rejected' ($tuiStartBad -match 'not a hook profile')
+    # a typed command starts a session; piped stdin cannot attach, so it prints the name
+    $echoBefore = @(Get-Sessions -Profile 'echo' | ForEach-Object { $_.Name })
+    $null = "echo`n" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null
+    $echoNew = @(Get-Sessions -Profile 'echo' | Where-Object { $echoBefore -notcontains $_.Name })
+    Assert 'tui typed command starts a session' ($echoNew.Count -eq 1)
+    foreach ($nm in $echoNew) { [void](Stop-Session -Profile 'echo' -Name $nm.Name) }
     $env:KEEPALIVE_FORCE_TUI = ''
     $plainOut = @('q' | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
     Assert 'plain dashboard when piped' (($plainOut -match 'keepalive') -and (-not $plainOut.Contains([char]27)))
-    $plainStartBad = @("`nno-such-cmd-xyz`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    $plainStartBad = @("no-such-cmd-xyz`nq" |& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
     Assert 'plain start rejects unknown name' ($plainStartBad -match 'not a hook profile')
 
     # --- agent mode: --flat, --launch, --stop, --log, --help ---

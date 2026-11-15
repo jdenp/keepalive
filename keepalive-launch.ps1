@@ -383,8 +383,37 @@ function Invoke-Attach {
     exit $LASTEXITCODE
 }
 
+$script:DashboardUsage = 'Usage: {command to start new} --- 1a / 1 attach --- 1s / 1 stop'
+
+function Invoke-DashboardCommand {
+    # one typed dashboard entry: a leading number attaches or stops that session, anything else starts as a command; returns a message
+    param([string]$Text, $All)
+    $All = @($All)
+    $t = $Text.Trim()
+    if ($t -eq '') { return '' }
+    if ($t -match '^[qQ]$') { exit 0 }
+    if ($t -match '^(\d+)\s*(.*)$') {
+        $i = [int]$Matches[1]
+        $action = $Matches[2].ToLower()
+        if ($i -lt 1 -or $i -gt $All.Count) { return "no session #$i" }
+        $target = $All[$i - 1]
+        if ($action -in @('', 'a', 'attach')) { Invoke-Attach -Name $target.Name }
+        if ($action -in @('s', 'stop')) {
+            if (Stop-Session -Profile $target.Profile -Name $target.Name) { return "stopped $($target.Name)" }
+            return "not stopped: $($target.Name)"
+        }
+        return "unknown action '$action' for #$i ($($script:DashboardUsage))"
+    }
+    try {
+        $rp = Resolve-Start -Name $t -Args2 @()
+        $sname = New-Session -Profile $rp[0] -Args2 $rp[1]
+        Invoke-Attach -Name $sname
+    } catch { return $_.Exception.Message }
+    return ''
+}
+
 function Show-Dashboard {
-    # global view of all running sessions. 1-N = attach, sN = stop, Enter = start named, q = quit
+    # global view of all running sessions; entries go through Invoke-DashboardCommand
     # colored TUI on real terminals, plain menu when output is piped
     $onTty = -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected
     if (($onTty -or $env:KEEPALIVE_FORCE_TUI -eq '1') -and (Get-Command Show-TuiDashboard -ErrorAction SilentlyContinue)) {
@@ -403,31 +432,11 @@ function Show-Dashboard {
             Write-Host ("  {0}) {1}  started {2}{3}" -f $n, $s.Name, $s.Started, $label)
             $n++
         }
-        Write-Host "  [1-$count] attach   s1 stop #1   Enter start name   q quit"
+        Write-Host "  $($script:DashboardUsage)"
         $choice = Read-Host ' >'
-        if ($choice -match '^\s*[qQ]\s*$') { exit 0 }
-        if ($choice -match '^\s*$') {
-            $raw = Read-Host 'start'
-            if ($raw -match '^\s*$') { continue }
-            try {
-                $rp = Resolve-Start -Name $raw -Args2 @()
-                $sname = New-Session -Profile $rp[0] -Args2 $rp[1]
-                Invoke-Attach -Name $sname
-            } catch { Write-Host $_.Exception.Message }
-        }
-        if ($choice -match '^\s*s\s?(\d+)\s*$') {
-            $idx = [int]$Matches[1]
-            if ($idx -ge 1 -and $idx -le $count) {
-                $target = $all[$idx - 1]
-                if (Stop-Session -Profile $target.Profile -Name $target.Name) { Write-Host "stopped $($target.Name)" }
-                continue
-            }
-            Write-Host "no session #$idx"
-        }
-        if ($choice -match '^\d+$' -and [int]$choice -ge 1 -and [int]$choice -le $count) {
-            Invoke-Attach -Name $all[[int]$choice - 1].Name
-        }
-        Write-Host "invalid choice: $choice"
+        if ($null -eq $choice) { exit 0 }
+        $msg = Invoke-DashboardCommand -Text $choice -All $all
+        if ($msg) { Write-Host $msg }
     }
 }
 
@@ -438,7 +447,7 @@ function Show-Help {
     $lines += ''
     $lines += 'HUMAN (interactive; colored TUI on a real terminal):'
     $lines += '  keepalive                  dashboard of all running sessions'
-    $lines += '                             1-N attach   sN stop   Enter start named   q quit'
+    $lines += '                             ' + $script:DashboardUsage
     $lines += '  keepalive <x> [args...]    start a new session of x and attach'
     $lines += '  keepalive <x> -l           list sessions of x'
     $lines += '  keepalive <x> --detach     start a new session, print its name, exit'

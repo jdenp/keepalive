@@ -33,9 +33,9 @@ keepalive --flat --log <name>      print recent pane output of a session
 keepalive --help                   full human and agent usage
 ```
 
-Dashboard: `1-N` attach, `s1` (or `s 1`) stop session 1, Enter start new
-(prompts for a name), `q` quit. On an interactive terminal the dashboard is a
-small colored TUI; when output is piped it falls back to plain text (same keys).
+Dashboard: one `>` prompt. `1`, `1a` or `1 attach` attaches session 1, `1s` or
+`1 stop` stops it, and anything that does not start with a number starts as a new
+session (`qwens`, `pi`, `npm run dev`). `q` quits.
 
 `--flat` is the AI-agent path: no prompts, plain stdout. Lock your own session
 before any stop/kill work so you cannot kill yourself:
