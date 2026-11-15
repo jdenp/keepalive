@@ -98,6 +98,8 @@ function Show-TuiDashboard {
         $prevLines = $lines.Count + 1
         $choice = [Console]::ReadLine()
         if ($null -eq $choice) { exit 0 }
-        $msg = Invoke-DashboardCommand -Text $choice -All $all
+        $r = Invoke-DashboardCommand -Text $choice -All $all
+        if ($r.Attach) { Invoke-Attach -Name $r.Attach }
+        $msg = $r.Message
     }
 }

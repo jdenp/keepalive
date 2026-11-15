@@ -385,31 +385,35 @@ function Invoke-Attach {
 
 $script:DashboardUsage = 'Usage: {command to start new} --- 1a / 1 attach --- 1s / 1 stop'
 
+function New-DashboardResult {
+    param([string]$Message = '', [string]$Attach = '')
+    return [pscustomobject]@{ Message = $Message; Attach = $Attach }
+}
+
 function Invoke-DashboardCommand {
-    # one typed dashboard entry: a leading number attaches or stops that session, anything else starts as a command; returns a message
+    # one typed dashboard entry; returns the session to attach, since tmux attached inside a captured call never reaches the console
     param([string]$Text, $All)
     $All = @($All)
     $t = $Text.Trim()
-    if ($t -eq '') { return '' }
+    if ($t -eq '') { return New-DashboardResult }
     if ($t -match '^[qQ]$') { exit 0 }
     if ($t -match '^(\d+)\s*(.*)$') {
         $i = [int]$Matches[1]
         $action = $Matches[2].ToLower()
-        if ($i -lt 1 -or $i -gt $All.Count) { return "no session #$i" }
+        if ($i -lt 1 -or $i -gt $All.Count) { return New-DashboardResult -Message "no session #$i" }
         $target = $All[$i - 1]
-        if ($action -in @('', 'a', 'attach')) { Invoke-Attach -Name $target.Name }
+        if ($action -in @('', 'a', 'attach')) { return New-DashboardResult -Attach $target.Name }
         if ($action -in @('s', 'stop')) {
-            if (Stop-Session -Profile $target.Profile -Name $target.Name) { return "stopped $($target.Name)" }
-            return "not stopped: $($target.Name)"
+            if (Stop-Session -Profile $target.Profile -Name $target.Name) { return New-DashboardResult -Message "stopped $($target.Name)" }
+            return New-DashboardResult -Message "not stopped: $($target.Name)"
         }
-        return "unknown action '$action' for #$i ($($script:DashboardUsage))"
+        return New-DashboardResult -Message "unknown action '$action' for #$i ($($script:DashboardUsage))"
     }
     try {
         $rp = Resolve-Start -Name $t -Args2 @()
         $sname = New-Session -Profile $rp[0] -Args2 $rp[1]
-        Invoke-Attach -Name $sname
-    } catch { return $_.Exception.Message }
-    return ''
+        return New-DashboardResult -Attach $sname
+    } catch { return New-DashboardResult -Message $_.Exception.Message }
 }
 
 function Show-Dashboard {
@@ -435,8 +439,9 @@ function Show-Dashboard {
         Write-Host "  $($script:DashboardUsage)"
         $choice = Read-Host ' >'
         if ($null -eq $choice) { exit 0 }
-        $msg = Invoke-DashboardCommand -Text $choice -All $all
-        if ($msg) { Write-Host $msg }
+        $r = Invoke-DashboardCommand -Text $choice -All $all
+        if ($r.Attach) { Invoke-Attach -Name $r.Attach }
+        if ($r.Message) { Write-Host $r.Message }
     }
 }
 

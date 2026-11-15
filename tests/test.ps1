@@ -272,11 +272,16 @@ try {
     $null = "`n`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null
     Assert 'tui empty enter is a no-op' ($LASTEXITCODE -eq 0)
     # piped stdin cannot attach, so 1a prints the first session's name and exits
-    $attachOut = @("1a" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
-    Assert 'tui 1a attaches the first session' ($attachOut -match [regex]::Escape($s1))
-    $verbBad = @("1x`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
+    # sessions of other profiles can sort before the test's own
+    $n1 = 1 + [array]::IndexOf(@(Get-AllSessions | ForEach-Object { $_.Name }), $s1)
+    $attachOut = @("${n1}a" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null)
+    Assert 'tui 1a attaches the first session' (@($attachOut | ForEach-Object { ($_ -replace ([char]27 + '\[[0-9;]*[A-Za-z]'), '').Trim() }) -contains $s1)
+    $one = @([pscustomobject]@{ Profile = 'echo'; Name = 'echo-000001' })
+    Assert 'dashboard 1 returns the session to attach' ((Invoke-DashboardCommand -Text '1' -All $one).Attach -eq 'echo-000001')
+    Assert 'dashboard 1 attach returns the session to attach' ((Invoke-DashboardCommand -Text '1 attach' -All $one).Attach -eq 'echo-000001')
+    $verbBad = @("${n1}x`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null) -join "`n"
     Assert 'tui names an unknown action' ($verbBad -match "unknown action 'x'")
-    $null = "1 stop`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null
+    $null = "$n1 stop`nq" | & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'keepalive-launch.ps1') 2>$null
     $stillThere = $false
     foreach ($nm in @(Get-Sessions -Profile 'echo')) { if ($nm.Name -eq $s1) { $stillThere = $true } }
     Assert 'tui stop stops the first session' (-not $stillThere)
