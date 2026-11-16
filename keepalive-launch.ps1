@@ -270,17 +270,35 @@ function Test-CommandExists {
     return [bool](Get-Command $Token -CommandType Application -ErrorAction SilentlyContinue)
 }
 
+function Find-LocalScript {
+    # full path of a bare name in the current directory, as cmd.exe would find it; $null if absent
+    param([string]$Token)
+    if ($Token -match '[\\/]|^:' -or -not $Token) { return $null }
+    $exts = @('') + @($env:PATHEXT -split ';' | Where-Object { $_ })
+    foreach ($e in $exts) {
+        $p = Join-Path $PWD.ProviderPath ($Token + $e)
+        if (Test-Path -LiteralPath $p -PathType Leaf) { return $p }
+    }
+    return $null
+}
+
 function Resolve-Start {
     # Resolve-AdHoc plus a guard: refuse ad-hoc commands that would exit immediately
     param([string]$Name, [string[]]$Args2)
     $rp = Resolve-AdHoc -Name $Name -Args2 $Args2
     $hook = Join-Path $script:HooksDir (Join-Path $rp[0] 'start.ps1')
     $tok = (@($rp[1][0]) -split '\s+')[0]
-    if (-not (Test-Path -LiteralPath $hook) -and -not (Test-CommandExists -Token $tok)) {
-        $profs = (Get-HookProfiles) -join ', '
-        throw "'$tok' is not a hook profile (profiles: $profs) and not found on PATH - the session would exit immediately"
+    if (Test-Path -LiteralPath $hook) { return $rp }
+    if (Test-CommandExists -Token $tok) { return $rp }
+    $local = Find-LocalScript -Token $tok
+    if ($local) {
+        # the pane does not search the current directory, so pass the full path
+        if ($local -match '\s') { $local = '"' + $local + '"' }
+        $rp[1][0] = $local + $rp[1][0].Substring($tok.Length)
+        return $rp
     }
-    return $rp
+    $profs = (Get-HookProfiles) -join ', '
+    throw "'$tok' is not a hook profile (profiles: $profs) and not found on PATH or in the current directory - the session would exit immediately"
 }
 
 function Get-Labels {
