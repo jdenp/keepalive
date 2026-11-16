@@ -297,8 +297,7 @@ function Resolve-Start {
         $rp[1][0] = $local + $rp[1][0].Substring($tok.Length)
         return $rp
     }
-    $profs = (Get-HookProfiles) -join ', '
-    throw "'$tok' is not a hook profile (profiles: $profs) and not found on PATH or in the current directory - the session would exit immediately"
+    throw "'$tok' is not a hook profile and not found on PATH or in the current directory - the session would exit immediately. Pass a full path, add it to PATH, or add hooks/$tok/start.ps1"
 }
 
 function Get-Labels {
