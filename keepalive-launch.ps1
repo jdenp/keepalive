@@ -171,7 +171,7 @@ function Get-Sessions {
     if ($r.Code -ne 0 -or -not $out) { return @() }
     $list = @()
     foreach ($line in $out) {
-        # -\d+ (not -\S+): session suffix is a timestamp, so 'qwen' does not match 'qwen-mm-*'
+        # -\d+ (not -\S+): session suffix is a timestamp, so 'web' does not match 'web-ui-*'
         if ($line -notmatch "^$([regex]::Escape($Profile))-\d+ \d+") { continue }
         $parts = $line -split ' ', 2
         $list += [pscustomobject]@{

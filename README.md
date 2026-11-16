@@ -35,7 +35,7 @@ keepalive --help                   full human and agent usage
 
 Dashboard: one `>` prompt. `1`, `1a` or `1 attach` attaches session 1, `1s` or
 `1 stop` stops it, and anything that does not start with a number starts as a new
-session (`qwens`, `pi`, `npm run dev`). `q` quits.
+session (a hook profile name, `npm run dev`, `C:\tools\server.bat`). `q` quits.
 
 `--flat` is the AI-agent path: no prompts, plain stdout. Lock your own session
 before any stop/kill work so you cannot kill yourself:
@@ -51,9 +51,7 @@ A locked session is refused with a warning until unlocked.
 ## Examples
 
 ```
-keepalive pi          # pi coding agent; menu shows your prompt per session
-keepalive qwen        # wrap the local llama server in tmux (optional; the
-                      # plain `qwen` cmd uses the original launch script)
+keepalive myserver    # a hook profile: runs hooks/myserver/start.ps1
 keepalive "npm run dev"
 keepalive C:\tools\server.bat
 keepalive python train.py --epochs 10
@@ -71,6 +69,9 @@ Drop a folder into `hooks/<name>/` to add behaviour for profile `<name>`:
 | `start.ps1` | required. What runs in the pane. Keep the process in the foreground |
 | `label.ps1` | optional. One short status line per session for the menu       |
 | `stop.ps1`  | optional. Gracefully stop the underlying process before the session is killed |
+
+`hooks/` is gitignored: profiles are local to each machine. `tests/hooks/server/`
+is a working example of all three files.
 
 See `AGENTS.md` for the full contract and the tmux/PowerShell gotchas.
 

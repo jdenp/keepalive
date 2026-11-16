@@ -81,7 +81,7 @@ session before any stop/kill work, so a bug cannot kill the agent's own session.
 - `tmux source-file` called from inside a pane deadlocks in this build. Set
   options directly (`tmux set-option -g ...`) or rely on server startup.
 - The tmux server here is usually started with a custom socket
-  (`-S tmux-short-default`); client commands from a shell that is itself
+  (`-S tmux-<user>-default`); client commands from a shell that is itself
   inside tmux inherit `$TMUX` and target the right server.
 - Kill the server before upgrading `tmux.exe` (Windows cannot overwrite a
   running exe). The server auto-exits when the last session dies.
@@ -135,14 +135,14 @@ session before any stop/kill work, so a bug cannot kill the agent's own session.
 ## Test seams (env vars)
 
 - `KEEPALIVE_NO_MAIN=1`: dot-source `keepalive-launch.ps1` for its functions without running main.
-- `KEEPALIVE_HOOKS_DIR`: override the hooks directory (tests use `tests/hooks`).
-- `PI_SESSIONS_DIR`: override the pi sessions directory (label/conflict tests).
-- `KEEPALIVE_PI_DRY_RUN=1`: pi hook prints `DRYRUN: <args>` instead of launching pi.
+- `KEEPALIVE_HOOKS_DIR`: override the hooks directory (tests use `tests/hooks`:
+  `echo`, and `server`, which wraps a dummy listener on port 18099).
 - `KEEPALIVE_FORCE_TUI=1`: force the colored menu even when output is piped (tests).
-- `QWEN_SERVER`: override the qwen server bat (tests use a dummy on port 18099).
-- `QWENS_SERVER`: override the qwens server bat (tests share the same dummy).
+- `hooks/` is machine-local and gitignored. The suite tests a local `hooks/pi`
+  only when one exists (`PI_SESSIONS_DIR`, `KEEPALIVE_PI_DRY_RUN=1` are its seams)
+  and skips it otherwise.
 - Tests own the 18099 port lifecycle; a stale listener from a killed pane
-  must be cleaned before the qwen tests.
+  must be cleaned before the server tests.
 
 ## Conventions
 

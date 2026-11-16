@@ -53,7 +53,7 @@ function Kill-PortListener {
 $leftovers = @()
 try { $leftovers = @((& $script:tmux list-sessions -F "#{session_name}" 2>$null)) } catch { }
 foreach ($nm in $leftovers) {
-    foreach ($pat in @('echo-.*', 'ping-.*', 'pi-t.*', 'qtest-.*', 'qst-.*', 'q-.*')) {
+    foreach ($pat in @('echo-.*', 'ping-.*', 'pi-t.*', 'srv-.*')) {
         if ($nm -match $pat) { [void](Invoke-Tmux @('kill-session', '-t', $nm)); break }
     }
 }
@@ -112,8 +112,11 @@ try {
     Assert 'known ad-hoc command launches' ($okName -match '^ping-\d{6,}$')
     if ($okName) { [void](Stop-Session -Profile 'ping' -Name $okName) }
 
-    # --- pi label hook ---
+    # --- pi hook: machine-local, so only tested where hooks/pi exists ---
+    $piHook = Join-Path $root 'hooks\pi'
     $fix = Join-Path $PSScriptRoot 'fixture-sessions'
+    if (-not (Test-Path -LiteralPath (Join-Path $piHook 'label.ps1'))) { Write-Host '  skip pi hook tests (no hooks/pi)' }
+    else {
     Remove-Item -Recurse -Force $fix -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $fix | Out-Null
     $now = [DateTimeOffset]::Now
@@ -157,97 +160,52 @@ try {
     Remove-Item Env:KEEPALIVE_PI_DRY_RUN -ErrorAction SilentlyContinue
     Remove-Item Env:PI_SESSIONS_DIR -ErrorAction SilentlyContinue
     Assert 'pi -c skips held session' (@($dry) -join ' ' -match ("--session " + $midUuid))
+    }
 
-    # --- qwen hooks ---
-    $env:QWEN_SERVER = Join-Path $PSScriptRoot 'dummy_server.bat'
-    $qLabel = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hooks\qwen\label.ps1') 'qwen-test-1' '1700000000' 2>$null
-    Assert 'qwen label shows port' ((@($qLabel) -join ' ') -match 'llama :18099 (up|down)')
+    # --- server fixture hook (tests/hooks/server): label, start, tail, stop ---
+    $srvLabel = Get-Labels -Profile 'server' -Sessions @([pscustomobject]@{ Profile = 'server'; Name = 'server-000001'; Created = 1700000000 })
+    Assert 'server label shows port' ((@($srvLabel) -join ' ') -match 'server :18099 (up|down)')
 
     Kill-PortListener 18099
     Start-Sleep -Milliseconds 500
+    $logPath = Join-Path $env:TEMP 'keepalive-test\server.log'
     # start from a clean log so the tail stays short and the banner stays visible
-    Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'qwen\qwen.log') -ErrorAction SilentlyContinue
-    $null = New-TestSession 'qtest-1' "cmd.exe /c C:\Repos\keepalive\tests\qwen_test_start.bat"
+    Remove-Item -LiteralPath $logPath -ErrorAction SilentlyContinue
+    $srvCmd = Build-Command -Profile 'server' -Args2 @()
+    $null = New-TestSession 'srv-1' $srvCmd
     $up = $false
     for ($i = 0; $i -lt 30; $i++) { Start-Sleep -Seconds 1; if (Test-PortOpen -P 18099) { $up = $true; break } }
-    $pane = (& $script:tmux capture-pane -pt qtest-1 -p 2>$null) -join "`n"
-    Assert 'qwen start opens port' $up
-    Assert 'qwen start banner in pane' ($pane -match 'starting qwen server on :18099')
-    $logPath = Join-Path $env:LOCALAPPDATA 'qwen\qwen.log'
+    $pane = (& $script:tmux capture-pane -pt srv-1 -p 2>$null) -join "`n"
+    Assert 'server start opens port' $up
+    Assert 'server start banner in pane' ($pane -match 'starting server on :18099')
     $logHas = $false
-    if (Test-Path -LiteralPath $logPath) { $logHas = @((Select-String -Path $logPath -Pattern 'dummy llama-server on --port 18099' -ErrorAction SilentlyContinue)).Count -gt 0 }
-    Assert 'qwen log written' $logHas
+    if (Test-Path -LiteralPath $logPath) { $logHas = @((Select-String -Path $logPath -Pattern 'dummy server on --port 18099' -ErrorAction SilentlyContinue)).Count -gt 0 }
+    Assert 'server log written' $logHas
 
-    $null = New-TestSession 'qtest-2' "cmd.exe /c C:\Repos\keepalive\tests\qwen_test_start.bat"
+    $null = New-TestSession 'srv-2' $srvCmd
     Start-Sleep -Seconds 3
-    $null = & $script:tmux has-session -t qtest-2 2>$null
+    $null = & $script:tmux has-session -t srv-2 2>$null
     $q2ok = ($LASTEXITCODE -eq 0)
     $pane2 = ''
-    if ($q2ok) { $pane2 = (& $script:tmux capture-pane -pt qtest-2 -p 2>$null) -join "`n" }
-    Assert 'second qwen session alive' $q2ok
-    Assert 'second qwen tails instead of double-start' ($pane2 -match 'already running on :18099')
+    if ($q2ok) { $pane2 = (& $script:tmux capture-pane -pt srv-2 -p 2>$null) -join "`n" }
+    Assert 'second server session alive' $q2ok
+    Assert 'second server tails instead of double-start' ($pane2 -match 'already running on :18099')
 
     # server running but no log: the pane idles alive instead of exiting
     Remove-Item -LiteralPath $logPath -ErrorAction SilentlyContinue
-    $null = New-TestSession 'qtest-3' "cmd.exe /c C:\Repos\keepalive\tests\qwen_test_start.bat"
+    $null = New-TestSession 'srv-3' $srvCmd
     Start-Sleep -Seconds 3
-    $null = & $script:tmux has-session -t qtest-3 2>$null
+    $null = & $script:tmux has-session -t srv-3 2>$null
     $q3ok = ($LASTEXITCODE -eq 0)
     $pane3 = ''
-    if ($q3ok) { $pane3 = (& $script:tmux capture-pane -pt qtest-3 -p 2>$null) -join "`n" }
-    Assert 'no-log qwen session idles alive' $q3ok
-    Assert 'no-log qwen shows already running' ($pane3 -match 'already running on :18099')
+    if ($q3ok) { $pane3 = (& $script:tmux capture-pane -pt srv-3 -p 2>$null) -join "`n" }
+    Assert 'no-log server session idles alive' $q3ok
+    Assert 'no-log server shows already running' ($pane3 -match 'already running on :18099')
 
-    $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hooks\qwen\stop.ps1') 2>$null
+    $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $env:KEEPALIVE_HOOKS_DIR 'server\stop.ps1') 2>$null
     $freed = $false
     for ($i = 0; $i -lt 20; $i++) { Start-Sleep -Milliseconds 500; if (-not (Test-PortOpen -P 18099)) { $freed = $true; break } }
-    Assert 'qwen stop frees port' $freed
-    Remove-Item Env:QWEN_SERVER -ErrorAction SilentlyContinue
-
-    # --- qwens hooks ---
-    $env:QWENS_SERVER = Join-Path $PSScriptRoot 'dummy_server.bat'
-    $qsLabel = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hooks\qwens\label.ps1') 'qwens-test-1' '1700000000' 2>$null
-    Assert 'qwens label shows port' ((@($qsLabel) -join ' ') -match 'llama :18099 (up|down)')
-
-    Kill-PortListener 18099
-    Start-Sleep -Milliseconds 500
-    Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'qwen\qwens.log') -ErrorAction SilentlyContinue
-    $null = New-TestSession 'qst-1' "cmd.exe /c C:\Repos\keepalive\tests\qwens_test_start.bat"
-    $up = $false
-    for ($i = 0; $i -lt 30; $i++) { Start-Sleep -Seconds 1; if (Test-PortOpen -P 18099) { $up = $true; break } }
-    $pane = (& $script:tmux capture-pane -pt qst-1 -p 2>$null) -join "`n"
-    Assert 'qwens start opens port' $up
-    Assert 'qwens start banner in pane' ($pane -match 'starting qwens server on :18099')
-    $logPath = Join-Path $env:LOCALAPPDATA 'qwen\qwens.log'
-    $logHas = $false
-    if (Test-Path -LiteralPath $logPath) { $logHas = @((Select-String -Path $logPath -Pattern 'dummy llama-server on --port 18099' -ErrorAction SilentlyContinue)).Count -gt 0 }
-    Assert 'qwens log written' $logHas
-
-    $null = New-TestSession 'qst-2' "cmd.exe /c C:\Repos\keepalive\tests\qwens_test_start.bat"
-    Start-Sleep -Seconds 3
-    $null = & $script:tmux has-session -t qst-2 2>$null
-    $q2ok = ($LASTEXITCODE -eq 0)
-    $pane2 = ''
-    if ($q2ok) { $pane2 = (& $script:tmux capture-pane -pt qst-2 -p 2>$null) -join "`n" }
-    Assert 'second qwens session alive' $q2ok
-    Assert 'second qwens tails instead of double-start' ($pane2 -match 'already running on :18099')
-
-    # server running but no log: the pane idles alive instead of exiting
-    Remove-Item -LiteralPath $logPath -ErrorAction SilentlyContinue
-    $null = New-TestSession 'qst-3' "cmd.exe /c C:\Repos\keepalive\tests\qwens_test_start.bat"
-    Start-Sleep -Seconds 3
-    $null = & $script:tmux has-session -t qst-3 2>$null
-    $q3ok = ($LASTEXITCODE -eq 0)
-    $pane3 = ''
-    if ($q3ok) { $pane3 = (& $script:tmux capture-pane -pt qst-3 -p 2>$null) -join "`n" }
-    Assert 'no-log qwens session idles alive' $q3ok
-    Assert 'no-log qwens shows already running' ($pane3 -match 'already running on :18099')
-
-    $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'hooks\qwens\stop.ps1') 2>$null
-    $freed = $false
-    for ($i = 0; $i -lt 20; $i++) { Start-Sleep -Milliseconds 500; if (-not (Test-PortOpen -P 18099)) { $freed = $true; break } }
-    Assert 'qwens stop frees port' $freed
-    Remove-Item Env:QWENS_SERVER -ErrorAction SilentlyContinue
+    Assert 'server stop frees port' $freed
 
     # --- bare keepalive x: start a new session and attach ---
     $beforeNames = @(Get-Sessions -Profile 'echo').Name
